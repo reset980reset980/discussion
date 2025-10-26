@@ -1,0 +1,29 @@
+{
+  "name": "discussion-board-v2",
+  "version": "1.0.0",
+  "description": "Agora Insights 스타일의 실시간 토론 게시판",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "discussion",
+    "forum",
+    "realtime",
+    "agora"
+  ],
+  "author": "reset980",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "mysql2": "^3.6.5",
+    "pg": "^8.16.3",
+    "socket.io": "^4.7.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

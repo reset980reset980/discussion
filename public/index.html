@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실시간 토론 게시판 - Agora Insights</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- 로딩 오버레이 -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>토론방을 불러오는 중...</p>
+        </div>
+    </div>
+
+    <!-- 메인 컨테이너 -->
+    <div class="container">
+        <!-- 헤더 -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <h1 class="logo">
+                        <i class="fas fa-comments"></i>
+                        실시간 토론 게시판
+                    </h1>
+                    <p class="subtitle">다양한 주제로 실시간 토론에 참여하세요</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- 검색 및 필터 섹션 -->
+        <div class="search-filter-section">
+            <div class="search-container">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" id="searchInput" class="search-input" placeholder="토론방 검색...">
+            </div>
+
+            <div class="filter-section">
+                <select id="sortSelect" class="filter-select">
+                    <option value="recent">최신순</option>
+                    <option value="participants">인기순</option>
+                </select>
+
+                <select id="typeFilter" class="filter-select">
+                    <option value="">전체 유형</option>
+                    <option value="팀전">팀전</option>
+                    <option value="자유">자유</option>
+                    <option value="역할극">역할극</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 토론방 그리드 -->
+        <main class="main-content">
+            <div id="discussionsGrid" class="discussions-grid">
+                <!-- 토론방 카드들이 여기에 동적으로 추가됨 -->
+            </div>
+
+            <!-- 빈 상태 -->
+            <div id="emptyState" class="empty-state" style="display: none;">
+                <div class="empty-icon">
+                    <i class="fas fa-search"></i>
+                </div>
+                <h3>검색 결과가 없습니다</h3>
+                <p>다른 키워드로 검색해보세요</p>
+            </div>
+
+            <!-- 로딩 더 많은 데이터 -->
+            <div id="loadMoreButton" class="load-more-container" style="display: none;">
+                <button class="load-more-btn">
+                    <i class="fas fa-plus"></i>
+                    더 많은 토론 보기
+                </button>
+            </div>
+        </main>
+
+        <!-- 플로팅 새 토론 버튼 -->
+        <button class="floating-button" id="newDiscussionBtn" onclick="openNewDiscussionModal()">
+            <i class="fas fa-plus"></i>
+            <span class="button-text">새 토론 시작</span>
+        </button>
+    </div>
+
+    <!-- 새 토론 생성 모달 -->
+    <div id="newDiscussionModal" class="modal">
+        <div class="modal-overlay" onclick="closeNewDiscussionModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>새 토론 시작하기</h2>
+                <button class="modal-close" onclick="closeNewDiscussionModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <form id="newDiscussionForm" class="modal-form">
+                <div class="form-group">
+                    <label for="discussionTitle">토론 주제</label>
+                    <input type="text" id="discussionTitle" class="form-input"
+                           placeholder="토론 주제를 입력하세요" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="discussionAuthor">닉네임</label>
+                    <input type="text" id="discussionAuthor" class="form-input"
+                           placeholder="닉네임을 입력하세요" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="discussionPassword">삭제 비밀번호</label>
+                    <input type="password" id="discussionPassword" class="form-input"
+                           placeholder="••••••" required>
+                </div>
+
+                <div class="form-group">
+                    <label>토론 모드</label>
+                    <div class="mode-selection">
+                        <label class="mode-option">
+                            <input type="radio" name="discussionMode" value="자유" checked>
+                            <span class="mode-title">자유</span>
+                        </label>
+
+                        <label class="mode-option">
+                            <input type="radio" name="discussionMode" value="팀전">
+                            <span class="mode-title">팀전</span>
+                        </label>
+
+                        <label class="mode-option">
+                            <input type="radio" name="discussionMode" value="역할극">
+                            <span class="mode-title">역할극</span>
+                            <button type="button" class="ai-recommend-btn" onclick="generateAIDescription()">
+                                <span class="sparkle">✨</span> AI 추천
+                            </button>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 찬성/반대 입력 (팀전일 때만 표시) -->
+                <div class="pros-cons-section" id="prosConsSection" style="display: none;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>찬성 측 이름</label>
+                            <input type="text" id="prosName" class="form-input" placeholder="찬성">
+                        </div>
+                        <div class="form-group">
+                            <label>반대 측 이름</label>
+                            <input type="text" id="consName" class="form-input" placeholder="반대">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="discussionDescription">토론 상황</label>
+                    <textarea id="discussionDescription" class="form-textarea"
+                              placeholder="토론의 배경, 맥락, 또는 추가 정보를 입력하세요..."
+                              rows="8"></textarea>
+                </div>
+
+                <!-- 역할 목록 (역할극일 때만 표시) -->
+                <div class="role-section" id="roleSection" style="display: none;">
+                    <div class="form-group">
+                        <label>역할 목록</label>
+                        <input type="text" id="roleList" class="form-input"
+                               placeholder="쉼표(,)로 역할을 구분하여 입력하세요. 예: 교사, 학부모, 학생, AI 개발자">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="discussionDuration">유지 기간</label>
+                    <select id="discussionDuration" class="form-input">
+                        <option value="1">1일</option>
+                        <option value="3">3일</option>
+                        <option value="7">1주일</option>
+                        <option value="custom">사용자 입력</option>
+                    </select>
+                </div>
+
+                <!-- 사용자 입력 기간 (사용자 입력 선택 시에만 표시) -->
+                <div class="form-group" id="customDurationSection" style="display: none;">
+                    <label for="customDuration">사용자 입력 (일)</label>
+                    <input type="number" id="customDuration" class="form-input"
+                           placeholder="일 수를 입력하세요" min="1" max="365">
+                </div>
+
+                <!-- 비밀글 설정 -->
+                <div class="form-group">
+                    <label class="toggle-option">
+                        <input type="checkbox" id="isPrivateDiscussion">
+                        <span class="toggle-title">비밀글</span>
+                        <span class="toggle-description">입장코드가 필요한 비공개 토론방</span>
+                    </label>
+                </div>
+
+                <!-- 입장코드 설정 (비밀글 체크 시에만 표시) -->
+                <div class="form-group" id="entryCodeSection" style="display: none;">
+                    <label for="entryCode">입장코드</label>
+                    <input type="text" id="entryCode" class="form-input"
+                           placeholder="입장코드를 설정하세요 (4-10자리)"
+                           minlength="4" maxlength="10">
+                    <small class="form-hint">다른 사용자들이 이 코드로 토론방에 입장할 수 있습니다</small>
+                </div>
+
+
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeNewDiscussionModal()">
+                        취소
+                    </button>
+                    <button type="submit" class="btn-primary">
+                        생성
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 토론방 상세 모달 -->
+    <div id="discussionDetailModal" class="modal">
+        <div class="modal-overlay" onclick="closeDiscussionDetailModal()"></div>
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <div class="modal-title-section">
+                    <h2 id="detailTitle">토론 제목</h2>
+                    <div class="detail-meta">
+                        <span id="detailAuthor">작성자</span>
+                        <span id="detailParticipants">참여자</span>
+                        <span id="detailTimeRemaining">남은 시간</span>
+                        <span id="detailType" class="type-badge">유형</span>
+                    </div>
+                </div>
+                <button class="modal-close" onclick="closeDiscussionDetailModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="discussion-description">
+                    <p id="detailDescription">토론 설명</p>
+                </div>
+
+                <div class="opinions-container">
+                    <!-- 찬성 의견 -->
+                    <div class="opinion-section pros-section">
+                        <div class="section-header">
+                            <h3><i class="fas fa-thumbs-up"></i> 찬성 의견</h3>
+                            <span id="prosCount" class="opinion-count">0개</span>
+                        </div>
+                        <div id="prosOpinions" class="opinions-list">
+                            <!-- 찬성 의견들이 여기에 추가됨 -->
+                        </div>
+                    </div>
+
+                    <!-- 반대 의견 -->
+                    <div class="opinion-section cons-section">
+                        <div class="section-header">
+                            <h3><i class="fas fa-thumbs-down"></i> 반대 의견</h3>
+                            <span id="consCount" class="opinion-count">0개</span>
+                        </div>
+                        <div id="consOpinions" class="opinions-list">
+                            <!-- 반대 의견들이 여기에 추가됨 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 의견 작성 폼 -->
+                <div class="opinion-form-container">
+                    <h4>의견 작성하기</h4>
+                    <form id="opinionForm" class="opinion-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <input type="text" id="opinionAuthor" class="form-input"
+                                       placeholder="이름을 입력하세요" required>
+                            </div>
+                            <div class="form-group">
+                                <select id="opinionType" class="form-input" required>
+                                    <option value="">의견 유형 선택</option>
+                                    <option value="pros">찬성</option>
+                                    <option value="cons">반대</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <textarea id="opinionContent" class="form-textarea"
+                                      placeholder="의견을 작성해주세요..." rows="3" required></textarea>
+                        </div>
+
+                        <button type="submit" class="btn-primary">
+                            <i class="fas fa-paper-plane"></i>
+                            의견 제출
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 입장코드 입력 모달 -->
+    <div id="entryCodeModal" class="modal">
+        <div class="modal-overlay" onclick="closeEntryCodeModal()"></div>
+        <div class="modal-content password-modal">
+            <div class="modal-header">
+                <h2>비밀 토론방</h2>
+                <button class="modal-close" onclick="closeEntryCodeModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>입장 코드를 입력해야 토론에 참여할 수 있습니다.</p>
+                <div class="form-group">
+                    <label for="entryCodeInput">입장 코드</label>
+                    <input type="text" id="entryCodeInput" class="form-input"
+                           placeholder="교사가 안내한 입장코드를 입력하세요..."
+                           maxlength="10">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="closeEntryCodeModal()">
+                    취소
+                </button>
+                <button type="button" class="btn-primary" onclick="verifyEntryCode()">
+                    입장하기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 토스트 알림 -->
+    <div id="toast" class="toast">
+        <div class="toast-content">
+            <i class="toast-icon fas fa-check-circle"></i>
+            <span class="toast-message">알림 메시지</span>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
