@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>토론방</title>
+    <link rel="stylesheet" href="css/room.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 헤더 -->
+        <header class="room-header">
+            <div class="header-content">
+                <h1 class="room-title" id="roomTitle">토론방 제목</h1>
+                <div class="header-actions">
+                    <button class="btn-icon" id="shareBtn" title="공유">
+                        <span>🔗</span>
+                    </button>
+                    <button class="btn-icon" id="settingsBtn" title="설정">
+                        <span>⚙️</span>
+                    </button>
+                    <button class="btn-close" id="closeBtn">
+                        <span>✕</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- 메인 레이아웃: 채팅 + 사이드바 -->
+        <main class="main-layout">
+            <!-- 채팅 영역 (왼쪽, 항상 표시) -->
+            <div class="chat-area">
+                <div class="chat-container">
+                    <!-- 메시지 영역 -->
+                    <div class="messages-area" id="messagesArea">
+                        <div class="message-list" id="messageList">
+                            <!-- 메시지가 여기에 표시됩니다 -->
+                            <div class="system-message">
+                                <span>토론방에 입장했습니다</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 메시지 입력 영역 -->
+                    <div class="message-input-container">
+                        <div class="input-wrapper">
+                            <textarea
+                                class="message-input"
+                                id="messageInput"
+                                placeholder="메시지를 입력하세요..."
+                                rows="1"
+                            ></textarea>
+                            <button class="btn-send" id="sendBtn">
+                                <span>전송</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 오른쪽 사이드바 (토글) -->
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <h2 class="sidebar-title" id="sidebarTitle">참여자</h2>
+                    <button class="btn-close-sidebar" id="closeSidebarBtn">
+                        <span>✕</span>
+                    </button>
+                </div>
+
+                <div class="sidebar-content">
+                    <!-- 참여자 컨텐츠 -->
+                    <div class="sidebar-panel" id="panel-participants">
+                        <div class="participants-header">
+                            <div class="participant-stats">
+                                <div class="stat-item">
+                                    <span class="stat-label">전체</span>
+                                    <span class="stat-value" id="participantCount">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label" id="onlineCount">0명 온라인</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="participants-list" id="participantsList">
+                            <div class="empty-state">
+                                <p>아직 참여자가 없습니다</p>
+                            </div>
+                        </div>
+                        <div class="participants-stats">
+                            <div class="role-stats">
+                                <div class="role-stat">
+                                    <span class="role-label">찬성</span>
+                                    <span class="role-count" id="prosCount">0</span>
+                                </div>
+                                <div class="role-stat">
+                                    <span class="role-label">반대</span>
+                                    <span class="role-count" id="consCount">0</span>
+                                </div>
+                                <div class="role-stat">
+                                    <span class="role-label">중립</span>
+                                    <span class="role-count" id="neutralCount">0</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AI 분석 컨텐츠 -->
+                    <div class="sidebar-panel" id="panel-analysis" style="display: none;">
+                        <div class="analysis-header">
+                            <button class="btn-refresh" id="refreshAnalysisBtn">
+                                <span>🔄</span>
+                                <span>새로고침</span>
+                            </button>
+                        </div>
+                        <div class="analysis-content">
+                            <div class="analysis-section">
+                                <h3>요약</h3>
+                                <div class="summary-box" id="summaryBox">
+                                    <p class="empty-state">충분한 대화가 진행된 후 AI 분석이 생성됩니다.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AI 질문 컨텐츠 -->
+                    <div class="sidebar-panel" id="panel-questions" style="display: none;">
+                        <div class="questions-header">
+                            <div class="timer">
+                                <span class="timer-label">다음 질문까지</span>
+                                <span class="timer-value" id="timeRemaining">5:00</span>
+                            </div>
+                        </div>
+                        <div class="questions-list" id="questionsList">
+                            <div class="empty-state">
+                                <p>AI가 토론 주제에 대한 질문을 생성 중입니다...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </main>
+
+        <!-- 하단 버튼 영역 -->
+        <footer class="bottom-actions">
+            <button class="action-btn" id="btn-participants">
+                <span class="btn-icon">👥</span>
+                <span class="btn-label">참여자</span>
+                <span class="btn-badge" id="participantBadge">0</span>
+            </button>
+            <button class="action-btn" id="btn-analysis">
+                <span class="btn-icon">📊</span>
+                <span class="btn-label">AI 분석</span>
+            </button>
+            <button class="action-btn" id="btn-questions">
+                <span class="btn-icon">🤖</span>
+                <span class="btn-label">AI 질문</span>
+            </button>
+            <button class="action-btn" id="downloadPdfBtn">
+                <span class="btn-icon">📥</span>
+                <span class="btn-label">PDF</span>
+            </button>
+        </footer>
+    </div>
+
+    <!-- 공유 모달 -->
+    <div class="modal" id="shareModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>토론방 공유</h3>
+                <button class="btn-close-modal" onclick="closeShareModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="share-section">
+                    <label>공유 URL</label>
+                    <div class="url-input-group">
+                        <input type="text" id="shortUrl" readonly>
+                        <button onclick="copyUrl()">복사</button>
+                    </div>
+                </div>
+                <div class="share-section">
+                    <label>QR 코드</label>
+                    <div id="qrCode"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Socket.io -->
+    <script src="/socket.io/socket.io.js"></script>
+    <!-- 메인 스크립트 -->
+    <script src="js/room.js"></script>
+</body>
+</html>

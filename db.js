@@ -100,11 +100,11 @@ async function initializeDatabase() {
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_participants_discussion_id ON discussion_participants (discussion_id)`);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_participants_last_activity ON discussion_participants (last_activity)`);
 
-        // 샘플 데이터 삽입 (테이블이 비어있을 때만)
-        const result = await pool.query('SELECT COUNT(*) as count FROM discussions');
-        if (parseInt(result.rows[0].count) === 0) {
-            await insertSampleData();
-        }
+        // 샘플 데이터 삽입 비활성화 (사용자 요청)
+        // const result = await pool.query('SELECT COUNT(*) as count FROM discussions');
+        // if (parseInt(result.rows[0].count) === 0) {
+        //     await insertSampleData();
+        // }
 
         console.log('PostgreSQL 데이터베이스 초기화 완료');
 

@@ -59,9 +59,7 @@ function setupEventListeners() {
     const newDiscussionForm = document.getElementById('newDiscussionForm');
     newDiscussionForm.addEventListener('submit', handleNewDiscussion);
 
-    // Opinion form
-    const opinionForm = document.getElementById('opinionForm');
-    opinionForm.addEventListener('submit', handleNewOpinion);
+    // Opinion form - event listener registered in DOMContentLoaded (line 1273)
 
     // Modal close on outside click
     newDiscussionModal.addEventListener('click', (e) => {
@@ -224,7 +222,7 @@ function renderDiscussions() {
     emptyState.style.display = 'none';
 
     discussionsGrid.innerHTML = currentDiscussions.map(discussion => `
-        <div class="discussion-card" onclick="openDiscussionDetail(${discussion.id})">
+        <div class="discussion-card" onclick="window.location.href='room.html?id=${discussion.id}'">
             <div class="card-header">
                 <h3 class="discussion-title">
                     ${discussion.is_private === true ? '<i class="fas fa-lock"></i> ' : ''}${escapeHtml(discussion.title)}
@@ -357,13 +355,8 @@ async function openDiscussionDetail(id, skipPrivateCheck = false) {
         document.getElementById('detailType').className = `type-badge ${discussion.type}`;
         document.getElementById('detailDescription').textContent = discussion.description || '설명이 없습니다.';
 
-        // Render opinions
-        renderOpinions(discussion.pros || [], 'pros');
-        renderOpinions(discussion.cons || [], 'cons');
-
-        // Update opinion counts
-        document.getElementById('prosCount').textContent = `${(discussion.pros || []).length}개`;
-        document.getElementById('consCount').textContent = `${(discussion.cons || []).length}개`;
+        // 서버에서 의견 로드
+        await loadOpinions(discussion.id);
 
         discussionDetailModal.classList.add('active');
         document.body.style.overflow = 'hidden';
@@ -559,6 +552,9 @@ async function handleNewDiscussion(e) {
     }
 }
 
+// OLD IMPLEMENTATION - Deprecated (localStorage only)
+// Replaced by handleOpinionSubmit (line 1227) which uses PostgreSQL
+/*
 async function handleNewOpinion(e) {
     e.preventDefault();
 
@@ -624,6 +620,7 @@ async function handleNewOpinion(e) {
         hideLoading();
     }
 }
+*/
 
 
 async function likeOpinion(opinionId) {
@@ -1165,6 +1162,124 @@ async function generateAIDescriptionWithAPI(title) {
         throw error;
     }
 }
+
+// 의견 로드 함수
+async function loadOpinions(discussionId) {
+    try {
+        const response = await fetch(`/api/discussions/${discussionId}/opinions`);
+        if (!response.ok) throw new Error('의견을 불러올 수 없습니다');
+
+        const opinions = await response.json();
+
+        // 찬성/반대 의견 분리
+        const prosOpinions = opinions.filter(op => op.opinion_type === 'pros');
+        const consOpinions = opinions.filter(op => op.opinion_type === 'cons');
+
+        // DOM 업데이트
+        updateOpinionsDisplay(prosOpinions, consOpinions);
+    } catch (error) {
+        console.error('의견 로드 오류:', error);
+    }
+}
+
+// 의견 표시 업데이트
+function updateOpinionsDisplay(prosOpinions, consOpinions) {
+    // 찬성 의견
+    const prosContainer = document.getElementById('prosOpinions');
+    const prosCount = document.getElementById('prosCount');
+    if (prosContainer && prosCount) {
+        prosCount.textContent = `${prosOpinions.length}개`;
+        if (prosOpinions.length === 0) {
+            prosContainer.innerHTML = '<p class="no-opinions">아직 의견이 없습니다.</p>';
+        } else {
+            prosContainer.innerHTML = prosOpinions.map(op => `
+                <div class="opinion-item">
+                    <div class="opinion-header">
+                        <strong>${op.author}</strong>
+                        <span class="opinion-time">${new Date(op.created_at).toLocaleString()}</span>
+                    </div>
+                    <p class="opinion-content">${op.content}</p>
+                </div>
+            `).join('');
+        }
+    }
+
+    // 반대 의견
+    const consContainer = document.getElementById('consOpinions');
+    const consCount = document.getElementById('consCount');
+    if (consContainer && consCount) {
+        consCount.textContent = `${consOpinions.length}개`;
+        if (consOpinions.length === 0) {
+            consContainer.innerHTML = '<p class="no-opinions">아직 의견이 없습니다.</p>';
+        } else {
+            consContainer.innerHTML = consOpinions.map(op => `
+                <div class="opinion-item">
+                    <div class="opinion-header">
+                        <strong>${op.author}</strong>
+                        <span class="opinion-time">${new Date(op.created_at).toLocaleString()}</span>
+                    </div>
+                    <p class="opinion-content">${op.content}</p>
+                </div>
+            `).join('');
+        }
+    }
+}
+
+// 의견 제출
+async function handleOpinionSubmit(e) {
+    e.preventDefault();
+
+    if (!currentDiscussion) {
+        showToast('토론방 정보를 찾을 수 없습니다.', 'error');
+        return;
+    }
+
+    const author = document.getElementById('opinionAuthor').value.trim();
+    const content = document.getElementById('opinionContent').value.trim();
+    const opinion_type = document.getElementById('opinionType').value;
+
+    console.log('의견 제출 시도:', { author, content, opinion_type });
+
+    if (!author || !content || !opinion_type) {
+        console.error('유효성 검사 실패:', {
+            author: !!author,
+            content: !!content,
+            opinion_type: !!opinion_type
+        });
+        showToast('모든 필드를 입력해주세요.', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/discussions/${currentDiscussion.id}/opinions`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ author, content, opinion_type })
+        });
+
+        if (response.ok) {
+            showToast('의견이 추가되었습니다!', 'success');
+            document.getElementById('opinionForm').reset();
+            await loadOpinions(currentDiscussion.id);
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || '의견을 추가할 수 없습니다.');
+        }
+    } catch (error) {
+        console.error('의견 추가 오류:', error);
+        showToast(error.message, 'error');
+    }
+}
+
+// 이벤트 리스너 등록
+document.addEventListener('DOMContentLoaded', function() {
+    const opinionForm = document.getElementById('opinionForm');
+    if (opinionForm) {
+        opinionForm.addEventListener('submit', handleOpinionSubmit);
+    }
+});
 
 // Service Worker registration (for future PWA features)
 if ('serviceWorker' in navigator) {

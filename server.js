@@ -1,10 +1,19 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const http = require('http');
+const { Server } = require('socket.io');
 const { initializeDatabase, query } = require('./db');
 require('dotenv').config();
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
 const PORT = process.env.PORT || 3001;
 
 // 미들웨어 설정
@@ -296,6 +305,30 @@ app.delete('/api/discussions/:id', async (req, res) => {
     }
 });
 
+// 의견 목록 조회
+app.get('/api/discussions/:id/opinions', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        let opinions;
+        if (global.opinionsStore) {
+            // SQLite 폴백 모드
+            opinions = global.opinionsStore.filter(o => o.discussion_id == id);
+        } else {
+            // PostgreSQL 모드
+            opinions = await query(
+                'SELECT * FROM opinions WHERE discussion_id = $1 ORDER BY created_at DESC',
+                [id]
+            );
+        }
+
+        res.json(opinions);
+    } catch (error) {
+        console.error('의견 조회 오류:', error);
+        res.status(500).json({ error: '의견을 조회할 수 없습니다.' });
+    }
+});
+
 // 의견 추가
 app.post('/api/discussions/:id/opinions', async (req, res) => {
     try {
@@ -448,16 +481,161 @@ app.use((error, req, res, next) => {
     res.status(500).json({ error: '서버 내부 오류가 발생했습니다.' });
 });
 
+// ==========================================
+// Socket.io 실시간 통신
+// ==========================================
+
+io.on('connection', (socket) => {
+    console.log(`✅ 클라이언트 연결: ${socket.id}`);
+
+    // 토론방 입장
+    socket.on('join-room', async (data) => {
+        try {
+            const { discussionId, userName, userRole } = data;
+
+            // Socket.io 룸에 입장
+            socket.join(`discussion-${discussionId}`);
+
+            // 데이터베이스에 참여자 추가 또는 업데이트
+            if (!global.discussionsStore) {
+                // 기존 참여자 확인 (같은 토론방의 같은 이름)
+                const existing = await query(
+                    'SELECT id FROM participants WHERE discussion_id = $1 AND user_name = $2',
+                    [discussionId, userName]
+                );
+
+                let participantId;
+                if (existing.length > 0) {
+                    // 기존 참여자가 있으면 socket_id와 is_online 업데이트
+                    await query(
+                        'UPDATE participants SET socket_id = $1, is_online = true, last_seen = CURRENT_TIMESTAMP WHERE id = $2',
+                        [socket.id, existing[0].id]
+                    );
+                    participantId = existing[0].id;
+                } else {
+                    // 새로운 참여자 추가
+                    const result = await query(
+                        `INSERT INTO participants (discussion_id, user_name, user_role, socket_id, is_online)
+                         VALUES ($1, $2, $3, $4, true)
+                         RETURNING id`,
+                        [discussionId, userName, userRole || '참여자', socket.id]
+                    );
+                    participantId = result[0].id;
+                }
+
+                socket.participantId = participantId;
+                socket.discussionId = discussionId;
+
+                // 참여자 목록 조회
+                const participants = await query(
+                    'SELECT id, user_name, user_role, is_online FROM participants WHERE discussion_id = $1 AND is_online = true',
+                    [discussionId]
+                );
+
+                // 방의 모든 사용자에게 참여자 목록 업데이트 전송
+                io.to(`discussion-${discussionId}`).emit('participants-update', participants);
+
+                // 기존 메시지 로드하여 입장한 사용자에게만 전송
+                const messages = await query(
+                    'SELECT * FROM messages WHERE discussion_id = $1 ORDER BY created_at ASC',
+                    [discussionId]
+                );
+
+                // 기존 메시지를 입장한 사용자에게만 전송
+                socket.emit('load-messages', messages);
+
+                // 시스템 메시지 전송 (모든 사용자에게)
+                const systemMessage = {
+                    id: Date.now(),
+                    author: 'System',
+                    role: 'system',
+                    message: `${userName}님이 입장했습니다.`,
+                    timestamp: new Date(),
+                    is_ai: false,
+                    message_type: 'system'
+                };
+
+                io.to(`discussion-${discussionId}`).emit('new-message', systemMessage);
+            }
+
+            console.log(`👤 ${userName} joined discussion ${discussionId}`);
+        } catch (error) {
+            console.error('토론방 입장 오류:', error);
+            socket.emit('error', { message: '토론방 입장에 실패했습니다.' });
+        }
+    });
+
+    // 메시지 전송
+    socket.on('send-message', async (data) => {
+        try {
+            const { discussionId, message, userName, userRole } = data;
+
+            if (!global.discussionsStore) {
+                // 데이터베이스에 메시지 저장
+                const result = await query(
+                    `INSERT INTO messages (discussion_id, participant_id, user_name, user_role, message, message_type)
+                     VALUES ($1, $2, $3, $4, $5, 'chat')
+                     RETURNING id, created_at`,
+                    [discussionId, socket.participantId || null, userName, userRole, message]
+                );
+
+                // 방의 모든 사용자에게 메시지 전송
+                const messageData = {
+                    id: result[0].id,
+                    author: userName,
+                    role: userRole,
+                    message: message,
+                    timestamp: result[0].created_at,
+                    is_ai: false,
+                    message_type: 'chat'
+                };
+
+                io.to(`discussion-${discussionId}`).emit('new-message', messageData);
+            }
+        } catch (error) {
+            console.error('메시지 전송 오류:', error);
+            socket.emit('error', { message: '메시지 전송에 실패했습니다.' });
+        }
+    });
+
+    // 연결 해제
+    socket.on('disconnect', async () => {
+        try {
+            console.log(`❌ 클라이언트 연결 해제: ${socket.id}`);
+
+            if (!global.discussionsStore && socket.participantId && socket.discussionId) {
+                // 참여자 오프라인 처리
+                await query(
+                    'UPDATE participants SET is_online = false WHERE id = $1',
+                    [socket.participantId]
+                );
+
+                // 참여자 목록 조회
+                const participants = await query(
+                    'SELECT id, user_name, user_role, is_online FROM participants WHERE discussion_id = $1 AND is_online = true',
+                    [socket.discussionId]
+                );
+
+                // 방의 모든 사용자에게 참여자 목록 업데이트 전송
+                io.to(`discussion-${socket.discussionId}`).emit('participants-update', participants);
+            }
+        } catch (error) {
+            console.error('연결 해제 처리 오류:', error);
+        }
+    });
+});
+
 // 서버 시작
 async function startServer() {
     try {
         await initializeDatabase();
 
-        app.listen(PORT, '0.0.0.0', () => {
-            console.log(`\n🚀 Agora Insights 스타일 토론 게시판 서버 실행`);
+        server.listen(PORT, '0.0.0.0', () => {
+            console.log(`\n🚀 Agora Insights 스타일 토론 게시판 서버 실행 (Socket.io 통합)`);
             console.log(`📍 URL: http://localhost:${PORT}`);
             console.log(`🕒 시작 시간: ${new Date().toLocaleString('ko-KR')}`);
             console.log(`📊 데이터베이스: ${global.discussionsStore ? 'SQLite (메모리)' : 'PostgreSQL'}`);
+            console.log(`💬 실시간 채팅: 활성화`);
         });
     } catch (error) {
         console.error('서버 시작 실패:', error);

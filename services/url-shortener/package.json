@@ -1,0 +1,38 @@
+{
+  "name": "@keesdconsulting/url-shortener",
+  "version": "1.0.0",
+  "description": "재사용 가능한 독립형 URL 단축 서비스 모듈 (QR 코드, 분석, 다양한 DB 지원)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "url-shortener",
+    "qr-code",
+    "link-shortener",
+    "url",
+    "short-url",
+    "analytics",
+    "postgres",
+    "express",
+    "modular"
+  ],
+  "author": "KeesD Consulting",
+  "license": "MIT",
+  "peerDependencies": {
+    "express": "^4.18.0",
+    "pg": "^8.11.0",
+    "qrcode": "^1.5.0"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/url-shortener"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/url-shortener/issues"
+  }
+}
