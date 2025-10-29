@@ -1,3 +1,9 @@
 node_modules/
 .env
 *.log
+
+# Temporary files
+*.pdf
+nul
+screenshot_helper.py
+temp_screenshots/
