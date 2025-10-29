@@ -1,13 +1,14 @@
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config();
 
 const pool = new Pool({
-    host: 'localhost',
-    port: 5432,
-    database: 'vibedb',
-    user: 'postgres',
-    password: 'symphony99!'
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT) || 5432,
+    database: process.env.DB_NAME || 'postgres',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'symphony99!'
 });
 
 async function runMigration() {
