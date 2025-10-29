@@ -109,17 +109,122 @@
 
                     <!-- AI 분석 컨텐츠 -->
                     <div class="sidebar-panel" id="panel-analysis" style="display: none;">
-                        <div class="analysis-header">
-                            <button class="btn-refresh" id="refreshAnalysisBtn">
-                                <span>🔄</span>
-                                <span>새로고침</span>
-                            </button>
+                        <!-- AI 분석 탭 -->
+                        <div class="analysis-tabs">
+                            <button class="tab-btn active" data-tab="comprehensive">종합 분석</button>
+                            <button class="tab-btn" data-tab="flow">흐름 시각화</button>
+                            <button class="tab-btn" data-tab="verdict">AI 판결문</button>
                         </div>
+
+                        <!-- 탭 컨텐츠 -->
                         <div class="analysis-content">
-                            <div class="analysis-section">
-                                <h3>요약</h3>
-                                <div class="summary-box" id="summaryBox">
-                                    <p class="empty-state">충분한 대화가 진행된 후 AI 분석이 생성됩니다.</p>
+                            <!-- 종합 분석 탭 -->
+                            <div class="tab-content active" id="tab-comprehensive">
+                                <div class="analysis-intro">
+                                    <p>찬반 토론의 논리와 전략을 분석하여 AI가 승리팀을 판정하고 상세 분석 리포트를 생성합니다.</p>
+                                </div>
+
+                                <!-- 분석 시작 전 -->
+                                <div id="analysis-start-view">
+                                    <button class="btn-start-analysis" id="startAnalysisBtn">
+                                        <span>📊</span>
+                                        <span>AI 분석 시작하기</span>
+                                    </button>
+                                    <p class="analysis-hint">찬반 토론의 논리와 전략을 분석하여 AI가 승리팀을 판정하고 상세 분석 리포트를 생성합니다.</p>
+                                </div>
+
+                                <!-- 로딩 상태 -->
+                                <div id="analysis-loading-view" style="display: none;">
+                                    <div class="loading-spinner"></div>
+                                    <p class="loading-text">AI가 토론 내용을 분석하고 있습니다...</p>
+                                    <div class="skeleton-box"></div>
+                                    <div class="skeleton-box"></div>
+                                </div>
+
+                                <!-- 분석 결과 -->
+                                <div id="analysis-result-view" style="display: none;">
+                                    <!-- AI 최종 판정 -->
+                                    <div class="result-section">
+                                        <h3 class="section-title">🏆 AI 최종 판정</h3>
+                                        <div class="verdict-box">
+                                            <div class="winner-badge" id="winnerBadge">찬성 승리</div>
+                                            <p class="verdict-text" id="verdictText"></p>
+                                        </div>
+                                    </div>
+
+                                    <!-- 팀별 종합 분석 -->
+                                    <div class="result-section">
+                                        <h3 class="section-title">⚖️ 팀별 종합 분석</h3>
+                                        <div class="team-analysis">
+                                            <div class="team-box team-pros" id="teamProsAnalysis">
+                                                <div class="team-header">
+                                                    <span class="team-badge pros-badge">찬성 팀</span>
+                                                </div>
+                                                <div class="team-content">
+                                                    <p><strong>전략 분석:</strong> <span id="prosStrategy"></span></p>
+                                                    <p><strong>핵심 논거:</strong> <span id="prosArguments"></span></p>
+                                                </div>
+                                            </div>
+                                            <div class="team-box team-cons" id="teamConsAnalysis">
+                                                <div class="team-header">
+                                                    <span class="team-badge cons-badge">반대 팀</span>
+                                                </div>
+                                                <div class="team-content">
+                                                    <p><strong>전략 분석:</strong> <span id="consStrategy"></span></p>
+                                                    <p><strong>핵심 논거:</strong> <span id="consArguments"></span></p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 주요 발언 -->
+                                    <div class="result-section">
+                                        <h3 class="section-title">💬 주요 발언</h3>
+                                        <div class="key-statements">
+                                            <div class="statement-box statement-pros" id="keyStatementPros">
+                                                <div class="statement-label">[찬]</div>
+                                                <p class="statement-text"></p>
+                                            </div>
+                                            <div class="statement-box statement-cons" id="keyStatementCons">
+                                                <div class="statement-label">[반]</div>
+                                                <p class="statement-text"></p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 전체 참여자 개별 분석 -->
+                                    <div class="result-section">
+                                        <h3 class="section-title">👥 전체 참여자 개별 분석</h3>
+                                        <div class="participants-analysis" id="participantsAnalysis">
+                                            <!-- 동적으로 생성됨 -->
+                                        </div>
+                                    </div>
+
+                                    <!-- 하단 버튼 -->
+                                    <div class="analysis-actions">
+                                        <button class="btn-secondary" id="reanalyzeBtn">
+                                            <span>📊</span>
+                                            <span>다시 분석하기</span>
+                                        </button>
+                                        <button class="btn-primary" id="downloadPdfBtn2">
+                                            <span>📄</span>
+                                            <span>PDF로 다운로드</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 흐름 시각화 탭 -->
+                            <div class="tab-content" id="tab-flow" style="display: none;">
+                                <div class="empty-state">
+                                    <p>흐름 시각화 기능은 준비 중입니다.</p>
+                                </div>
+                            </div>
+
+                            <!-- AI 판결문 탭 -->
+                            <div class="tab-content" id="tab-verdict" style="display: none;">
+                                <div class="empty-state">
+                                    <p>AI 판결문 기능은 준비 중입니다.</p>
                                 </div>
                             </div>
                         </div>

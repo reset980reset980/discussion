@@ -910,3 +910,242 @@ window.addEventListener('beforeunload', () => {
 window.closeShareModal = closeShareModal;
 window.copyUrl = copyUrl;
 window.generateQuestions = generateAndSendQuestion;
+
+// ========================================== AI 분석 기능 ==========================================
+
+// 분석 결과 저장
+let analysisResult = null;
+
+// 탭 전환 기능
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const targetTab = btn.dataset.tab;
+
+        // 모든 탭 버튼과 컨텐츠에서 active 제거
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+        // 클릭한 탭 활성화
+        btn.classList.add('active');
+        document.getElementById('tab-' + targetTab).classList.add('active');
+    });
+});
+
+// 채팅 메시지 수집 함수
+function collectChatMessages() {
+    const messages = [];
+    const messageElements = document.querySelectorAll('.message:not(.system-message):not(.message-ai)');
+
+    messageElements.forEach(el => {
+        const authorEl = el.querySelector('.message-author');
+        const textEl = el.querySelector('.message-text');
+        const roleEl = el.querySelector('.message-role');
+
+        const author = authorEl ? authorEl.textContent.trim() : 'Unknown';
+        const text = textEl ? textEl.textContent.trim() : '';
+        const role = roleEl ? roleEl.textContent.trim().replace(/[\[\]]/g, '') : 'neutral';
+
+        if (text) {
+            messages.push({
+                author: author.split('[')[0].trim(),
+                role: role,
+                message: text
+            });
+        }
+    });
+
+    return messages;
+}
+
+// AI 분석 시작 버튼
+const startAnalysisBtn = document.getElementById('startAnalysisBtn');
+if (startAnalysisBtn) {
+    startAnalysisBtn.addEventListener('click', async () => {
+        const messages = collectChatMessages();
+
+        // 최소 5개 메시지 체크
+        if (messages.length < 5) {
+            alert('AI 분석을 위해서는 최소 5개 이상의 메시지가 필요합니다.');
+            return;
+        }
+
+        // 뷰 전환: 시작 -> 로딩
+        document.getElementById('analysis-start-view').style.display = 'none';
+        document.getElementById('analysis-loading-view').style.display = 'block';
+
+        try {
+            // Gemini API 호출
+            const response = await fetch('/api/analyze-discussion', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    discussion_id: discussionId,
+                    messages: messages
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('분석 요청 실패');
+            }
+
+            const result = await response.json();
+            analysisResult = result;
+
+            // 결과 렌더링
+            renderAnalysisResult(result);
+
+            // 뷰 전환: 로딩 -> 결과
+            document.getElementById('analysis-loading-view').style.display = 'none';
+            document.getElementById('analysis-result-view').style.display = 'block';
+
+        } catch (error) {
+            console.error('AI 분석 오류:', error);
+            alert('AI 분석 중 오류가 발생했습니다: ' + error.message);
+
+            // 뷰 전환: 로딩 -> 시작
+            document.getElementById('analysis-loading-view').style.display = 'none';
+            document.getElementById('analysis-start-view').style.display = 'block';
+        }
+    });
+}
+
+// 분석 결과 렌더링
+function renderAnalysisResult(result) {
+    // AI 최종 판정
+    const winnerBadge = document.getElementById('winnerBadge');
+    const verdictText = document.getElementById('verdictText');
+
+    if (result.winner) {
+        winnerBadge.textContent = result.winner === 'pros' ? '찬성 승리' : '반대 승리';
+        winnerBadge.className = 'winner-badge';
+        if (result.winner === 'cons') {
+            winnerBadge.style.color = '#ef4444';
+        }
+    }
+
+    if (result.verdict) {
+        verdictText.textContent = result.verdict;
+    }
+
+    // 팀별 종합 분석
+    if (result.team_analysis) {
+        if (result.team_analysis.pros) {
+            const prosStrategyEl = document.getElementById('prosStrategy');
+            const prosArgumentsEl = document.getElementById('prosArguments');
+            if (prosStrategyEl) prosStrategyEl.textContent = result.team_analysis.pros.strategy || '';
+            if (prosArgumentsEl) prosArgumentsEl.textContent = result.team_analysis.pros.arguments || '';
+        }
+        if (result.team_analysis.cons) {
+            const consStrategyEl = document.getElementById('consStrategy');
+            const consArgumentsEl = document.getElementById('consArguments');
+            if (consStrategyEl) consStrategyEl.textContent = result.team_analysis.cons.strategy || '';
+            if (consArgumentsEl) consArgumentsEl.textContent = result.team_analysis.cons.arguments || '';
+        }
+    }
+
+    // 주요 발언
+    if (result.key_statements) {
+        const prosStatement = result.key_statements.find(s => s.team === 'pros');
+        const consStatement = result.key_statements.find(s => s.team === 'cons');
+
+        if (prosStatement) {
+            const prosTextEl = document.querySelector('#keyStatementPros .statement-text');
+            if (prosTextEl) prosTextEl.textContent = prosStatement.statement || '';
+        }
+        if (consStatement) {
+            const consTextEl = document.querySelector('#keyStatementCons .statement-text');
+            if (consTextEl) consTextEl.textContent = consStatement.statement || '';
+        }
+    }
+
+    // 참여자 개별 분석
+    const participantsAnalysisEl = document.getElementById('participantsAnalysis');
+    if (participantsAnalysisEl) {
+        participantsAnalysisEl.innerHTML = '';
+
+        if (result.participant_analysis && result.participant_analysis.length > 0) {
+            result.participant_analysis.forEach(participant => {
+                const participantBox = document.createElement('div');
+                participantBox.className = 'participant-analysis-box';
+
+                const teamBadgeClass = participant.team === 'pros' ? 'pros-badge' :
+                                       participant.team === 'cons' ? 'cons-badge' : '';
+                const teamLabel = participant.team === 'pros' ? '찬성 팀' :
+                                  participant.team === 'cons' ? '반대 팀' : '중립';
+
+                let contributionHtml = '';
+                if (participant.key_contribution) {
+                    contributionHtml = '<div class="contribution-highlight"><strong>핵심 기여 발언:</strong><br>"' +
+                                       participant.key_contribution + '"</div>';
+                }
+
+                participantBox.innerHTML =
+                    '<div class="participant-analysis-header">' +
+                        '<span class="participant-name">' + participant.name + '</span>' +
+                        '<span class="participant-team-badge ' + teamBadgeClass + '">' + teamLabel + '</span>' +
+                    '</div>' +
+                    '<div class="participant-analysis-content">' +
+                        '<p><strong>개별 분석:</strong> ' + (participant.analysis || '') + '</p>' +
+                        contributionHtml +
+                    '</div>';
+
+                participantsAnalysisEl.appendChild(participantBox);
+            });
+        }
+    }
+}
+
+// 다시 분석하기 버튼
+const reanalyzeBtn = document.getElementById('reanalyzeBtn');
+if (reanalyzeBtn) {
+    reanalyzeBtn.addEventListener('click', () => {
+        // 뷰 초기화
+        document.getElementById('analysis-result-view').style.display = 'none';
+        document.getElementById('analysis-start-view').style.display = 'block';
+        analysisResult = null;
+    });
+}
+
+// PDF 다운로드 버튼
+const downloadPdfBtn2 = document.getElementById('downloadPdfBtn2');
+if (downloadPdfBtn2) {
+    downloadPdfBtn2.addEventListener('click', async () => {
+        if (!analysisResult) {
+            alert('분석 결과가 없습니다.');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/generate-pdf', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    discussion_id: discussionId,
+                    analysis: analysisResult
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('PDF 생성 실패');
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'discussion-analysis-' + discussionId + '.pdf';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+        } catch (error) {
+            console.error('PDF 다운로드 오류:', error);
+            alert('PDF 다운로드 중 오류가 발생했습니다.');
+        }
+    });
+}

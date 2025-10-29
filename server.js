@@ -16,6 +16,12 @@ const io = new Server(server, {
 });
 const PORT = process.env.PORT || 3001;
 
+// AI 질문 타이머 관리 (토론방별 마지막 AI 질문 전송 시간)
+const aiQuestionTimers = new Map();
+
+// AI 질문 생성 중 상태 관리 (중복 방지)
+const aiQuestionGenerating = new Map();
+
 // 미들웨어 설정
 app.use(cors());
 app.use(express.json());
@@ -471,10 +477,6 @@ app.get('/', (req, res) => {
 });
 
 // 404 에러 처리
-app.use((req, res) => {
-    res.status(404).json({ error: '페이지를 찾을 수 없습니다.' });
-});
-
 // ==========================================
 // AI 질문 생성 API
 // ==========================================
@@ -483,18 +485,23 @@ app.use((req, res) => {
 app.post('/api/discussions/:id/generate-questions', async (req, res) => {
     try {
         const { id } = req.params;
+        console.log(`🤖 AI 질문 생성 요청: 토론방 ID ${id}`);
+
         const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
         if (!GEMINI_API_KEY) {
+            console.error('❌ Gemini API 키가 설정되지 않음');
             return res.status(500).json({ error: 'Gemini API 키가 설정되지 않았습니다.' });
         }
 
         // 토론방 정보 조회
         const discussions = await query('SELECT * FROM discussions WHERE id = $1', [id]);
         if (discussions.length === 0) {
+            console.error(`❌ 토론방을 찾을 수 없음: ID ${id}`);
             return res.status(404).json({ error: '토론방을 찾을 수 없습니다.' });
         }
         const discussion = discussions[0];
+        console.log(`✅ 토론방 정보: "${discussion.title}"`);
 
         // 최근 메시지 조회 (최대 20개)
         const messages = await query(
@@ -506,7 +513,10 @@ app.post('/api/discussions/:id/generate-questions', async (req, res) => {
             [id]
         );
 
+        console.log(`📨 메시지 수: ${messages.length}개`);
+
         if (messages.length < 3) {
+            console.log('⚠️ 메시지가 부족함 (최소 3개 필요)');
             return res.json({
                 questions: [],
                 message: '질문을 생성하기에 충분한 대화가 없습니다. (최소 3개 메시지 필요)'
@@ -515,6 +525,7 @@ app.post('/api/discussions/:id/generate-questions', async (req, res) => {
 
         // 메시지를 시간순으로 정렬 (오래된 것부터)
         const sortedMessages = messages.reverse();
+        console.log('✅ 메시지 정렬 완료');
 
         // Gemini API 호출을 위한 프롬프트 생성
         const conversationText = sortedMessages
@@ -546,8 +557,9 @@ JSON 형식으로 응답해주세요:
 카테고리는 다음 중 하나를 선택: "실용성", "윤리", "경제", "사회", "기술", "환경", "정책"`;
 
         // Gemini API 호출
+        console.log('🌐 Gemini API 호출 시작...');
         const geminiResponse = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -557,45 +569,75 @@ JSON 형식으로 응답해주세요:
                     }],
                     generationConfig: {
                         temperature: 0.7,
-                        maxOutputTokens: 1000
+                        maxOutputTokens: 3000,
+                        responseMimeType: "application/json"
                     }
                 })
             }
         );
 
         if (!geminiResponse.ok) {
+            const errorText = await geminiResponse.text();
+            console.error(`❌ Gemini API 오류: ${geminiResponse.status}`, errorText);
             throw new Error(`Gemini API 오류: ${geminiResponse.status}`);
         }
 
+        console.log('✅ Gemini API 응답 수신 성공');
+
         const geminiData = await geminiResponse.json();
-        const responseText = geminiData.candidates[0].content.parts[0].text;
+        console.log('🔍 Gemini 응답 구조:', JSON.stringify(geminiData, null, 2));
+
+        // Gemini 2.5 응답 구조 확인 및 안전한 접근
+        if (!geminiData.candidates || !geminiData.candidates[0]) {
+            console.error('❌ Gemini 응답 구조 오류:', geminiData);
+            throw new Error('Gemini API 응답에 candidates가 없습니다.');
+        }
+
+        const candidate = geminiData.candidates[0];
+
+        // parts 존재 여부 확인
+        if (!candidate.content || !candidate.content.parts || !candidate.content.parts[0]) {
+            console.error('❌ Gemini 응답에 텍스트가 없습니다:', candidate);
+            throw new Error(`Gemini API 응답 오류: ${candidate.finishReason || 'UNKNOWN'}`);
+        }
+
+        const responseText = candidate.content.parts[0].text;
+        console.log('📝 Gemini 응답 텍스트:', responseText.substring(0, 200) + '...');
 
         // JSON 파싱 (마크다운 코드 블록 제거)
         const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/) || responseText.match(/\{[\s\S]*\}/);
         const questionsData = JSON.parse(jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : responseText);
+        console.log('✅ JSON 파싱 성공:', questionsData.questions.length + '개 질문');
 
-        // 데이터베이스에 질문 저장
-        const savedQuestions = [];
-        for (const q of questionsData.questions) {
-            const result = await query(
-                `INSERT INTO ai_questions (discussion_id, question, category, created_at)
-                 VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-                 RETURNING id, question, category, created_at`,
-                [id, q.question, q.category || '일반']
-            );
-            savedQuestions.push(result[0]);
-        }
+        // 메시지 개수 조회
+        const messageCountResult = await query(
+            'SELECT COUNT(*) as count FROM messages WHERE discussion_id = $1',
+            [id]
+        );
+        const messageCount = parseInt(messageCountResult[0].count);
 
-        console.log(`✨ AI 질문 ${savedQuestions.length}개 생성됨 (토론방 ${id})`);
+        // 데이터베이스에 질문 JSONB로 저장
+        console.log(`💾 질문 저장 중: ${questionsData.questions.length}개`);
+        const result = await query(
+            `INSERT INTO ai_questions (discussion_id, questions, message_count, generated_at)
+             VALUES ($1, $2::jsonb, $3, CURRENT_TIMESTAMP)
+             RETURNING id, questions, message_count, generated_at`,
+            [id, JSON.stringify(questionsData.questions), messageCount]
+        );
+
+        console.log(`✨ AI 질문 ${questionsData.questions.length}개 생성 완료 (토론방 ${id})`);
 
         res.json({
             success: true,
-            questions: savedQuestions,
-            message: `${savedQuestions.length}개의 질문이 생성되었습니다.`
+            questions: questionsData.questions,
+            id: result[0].id,
+            message_count: messageCount,
+            message: `${questionsData.questions.length}개의 질문이 생성되었습니다.`
         });
 
     } catch (error) {
-        console.error('AI 질문 생성 오류:', error);
+        console.error('❌ AI 질문 생성 오류:', error);
+        console.error('❌ 에러 스택:', error.stack);
         res.status(500).json({
             error: 'AI 질문 생성에 실패했습니다.',
             details: error.message
@@ -622,6 +664,166 @@ app.get('/api/discussions/:id/questions', async (req, res) => {
         console.error('AI 질문 조회 오류:', error);
         res.status(500).json({ error: 'AI 질문을 조회할 수 없습니다.' });
     }
+});
+
+// AI 토론 분석 API
+app.post('/api/analyze-discussion', async (req, res) => {
+    try {
+        const { discussion_id, messages } = req.body;
+
+        if (!messages || messages.length < 5) {
+            return res.status(400).json({ error: '최소 5개 이상의 메시지가 필요합니다.' });
+        }
+
+        const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+        if (!GEMINI_API_KEY) {
+            console.error('❌ Gemini API 키가 설정되지 않음');
+            return res.status(500).json({ error: 'Gemini API 키가 설정되지 않았습니다.' });
+        }
+
+        // 메시지를 텍스트로 변환
+        const messagesText = messages.map(m => `[${m.role}] ${m.author}: ${m.message}`).join('\n');
+
+        // Gemini 프롬프트
+        const prompt = `다음은 찬반 토론의 대화 내용입니다. 이 토론을 분석하여 JSON 형식으로 결과를 제공해주세요.
+
+토론 내용:
+${messagesText}
+
+다음 형식의 JSON으로 응답해주세요:
+{
+  "winner": "pros" 또는 "cons",
+  "verdict": "승리팀 판정 이유 (2-3문장)",
+  "team_analysis": {
+    "pros": {
+      "strategy": "찬성 팀의 전략 분석",
+      "arguments": "찬성 팀의 핵심 논거"
+    },
+    "cons": {
+      "strategy": "반대 팀의 전략 분석",
+      "arguments": "반대 팀의 핵심 논거"
+    }
+  },
+  "key_statements": [
+    {
+      "team": "pros",
+      "statement": "찬성 측 주요 발언"
+    },
+    {
+      "team": "cons",
+      "statement": "반대 측 주요 발언"
+    }
+  ],
+  "participant_analysis": [
+    {
+      "name": "참여자 이름",
+      "team": "pros" 또는 "cons",
+      "analysis": "개별 분석",
+      "key_contribution": "핵심 기여 발언"
+    }
+  ]
+}
+
+반드시 유효한 JSON만 반환하고, 다른 설명이나 마크다운 형식은 사용하지 마세요.`;
+
+        // Gemini API 호출
+        console.log('🌐 Gemini AI 토론 분석 API 호출 시작...');
+        const geminiResponse = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    contents: [
+                        {
+                            parts: [
+                                {
+                                    text: prompt
+                                }
+                            ]
+                        }
+                    ],
+                    generationConfig: {
+                        temperature: 0.7,
+                        topK: 40,
+                        topP: 0.95,
+                        maxOutputTokens: 2048
+                    }
+                })
+            }
+        );
+
+        if (!geminiResponse.ok) {
+            const errorText = await geminiResponse.text();
+            console.error(`❌ Gemini API 오류: ${geminiResponse.status}`, errorText);
+            throw new Error(`Gemini API 오류: ${geminiResponse.status}`);
+        }
+
+        console.log('✅ Gemini API 응답 수신 성공');
+
+        const geminiData = await geminiResponse.json();
+
+        if (!geminiData.candidates || !geminiData.candidates[0]) {
+            console.error('❌ Gemini 응답 구조 오류:', geminiData);
+            throw new Error('Gemini API 응답에 candidates가 없습니다.');
+        }
+
+        const candidate = geminiData.candidates[0];
+        const responseText = candidate.content?.parts?.[0]?.text;
+
+        if (!responseText) {
+            console.error('❌ Gemini 응답에 텍스트가 없습니다:', candidate);
+            throw new Error(`Gemini API 응답 오류: ${candidate.finishReason || 'UNKNOWN'}`);
+        }
+
+        console.log('📝 Gemini 분석 응답:', responseText.substring(0, 200) + '...');
+
+        // JSON 파싱
+        let analysisResult;
+        try {
+            // Markdown 코드 블록 제거
+            let jsonText = responseText.trim();
+            if (jsonText.startsWith('```json')) {
+                jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?$/g, '');
+            } else if (jsonText.startsWith('```')) {
+                jsonText = jsonText.replace(/```\n?/g, '').replace(/```\n?$/g, '');
+            }
+            analysisResult = JSON.parse(jsonText);
+        } catch (parseError) {
+            console.error('❌ JSON 파싱 오류:', parseError);
+            console.error('응답 텍스트:', responseText);
+            throw new Error('AI 응답을 파싱할 수 없습니다.');
+        }
+
+        console.log('✅ AI 토론 분석 완료');
+        res.json(analysisResult);
+
+    } catch (error) {
+        console.error('AI 토론 분석 오류:', error);
+        res.status(500).json({ error: 'AI 토론 분석 중 오류가 발생했습니다: ' + error.message });
+    }
+});
+
+// PDF 생성 API (임시 구현)
+app.post('/api/generate-pdf', async (req, res) => {
+    try {
+        const { discussion_id, analysis } = req.body;
+
+        // TODO: jsPDF를 사용한 PDF 생성
+        // 현재는 간단한 텍스트 응답
+        res.status(501).json({ error: 'PDF 생성 기능은 준비 중입니다.' });
+
+    } catch (error) {
+        console.error('PDF 생성 오류:', error);
+        res.status(500).json({ error: 'PDF 생성 중 오류가 발생했습니다.' });
+    }
+});
+
+// 404 에러 처리 (모든 라우트 정의 이후에 위치)
+app.use((req, res) => {
+    res.status(404).json({ error: '페이지를 찾을 수 없습니다.' });
 });
 
 // 에러 핸들러
@@ -704,9 +906,9 @@ io.on('connection', (socket) => {
 
             // 데이터베이스에 참여자 추가 또는 업데이트
             if (!global.discussionsStore) {
-                // 토론방 정보 조회 (팀명 가져오기)
+                // 토론방 정보 조회 (팀명 및 생성 시간 가져오기)
                 const discussionInfo = await query(
-                    'SELECT type, team1_name, team2_name FROM discussions WHERE id = $1',
+                    'SELECT type, team1_name, team2_name, created_at FROM discussions WHERE id = $1',
                     [discussionId]
                 );
 
@@ -722,9 +924,9 @@ io.on('connection', (socket) => {
                     }
                 }
 
-                // 기존 참여자 확인 (같은 토론방의 같은 이름)
+                // 기존 참여자 확인 (같은 토론방의 같은 이름, 가장 최근 것)
                 const existing = await query(
-                    'SELECT id, emoji_avatar, user_role FROM participants WHERE discussion_id = $1 AND user_name = $2',
+                    'SELECT id, avatar_image_url, avatar_color, user_role FROM participants WHERE discussion_id = $1 AND user_name = $2 ORDER BY last_seen DESC LIMIT 1',
                     [discussionId, userName]
                 );
 
@@ -770,8 +972,45 @@ io.on('connection', (socket) => {
                     [discussionId]
                 );
 
+                // 팀전 모드인 경우 팀명 변환
+                const convertedMessages = messages.map(msg => {
+                    if (discussion && discussion.type === '팀전') {
+                        if (msg.user_role === 'team1' || msg.user_role === '찬성') {
+                            msg.user_role = discussion.team1_name || '찬성';
+                        } else if (msg.user_role === 'team2' || msg.user_role === '반대') {
+                            msg.user_role = discussion.team2_name || '반대';
+                        }
+                    }
+                    return msg;
+                });
+
                 // 기존 메시지를 입장한 사용자에게만 전송
-                socket.emit('load-messages', messages);
+                socket.emit('load-messages', convertedMessages);
+
+                // AI 질문 타이머 계산 (마지막 AI 질문 또는 토론방 생성 시간 기준)
+                let referenceTime;
+                const lastAIQuestionTime = aiQuestionTimers.get(discussionId);
+
+                if (lastAIQuestionTime) {
+                    // 마지막 AI 질문 시간이 있으면 그것을 기준으로 계산
+                    referenceTime = lastAIQuestionTime;
+                } else {
+                    // 없으면 토론방 생성 시간 기준
+                    referenceTime = new Date(discussion.created_at);
+                }
+
+                const now = new Date();
+                const elapsedSeconds = Math.floor((now - referenceTime) / 1000);
+                const remainingSeconds = Math.max(0, 300 - elapsedSeconds); // 5분 = 300초
+                const isAIQuestionReady = elapsedSeconds >= 300;
+
+                // 타이머 정보를 입장한 사용자에게 전송
+                socket.emit('ai-timer-sync', {
+                    remainingSeconds,
+                    isReady: isAIQuestionReady
+                });
+
+                console.log(`⏱️ AI 질문 타이머: ${remainingSeconds}초 남음, 활성화: ${isAIQuestionReady}`);
 
                 // 시스템 메시지 전송 (모든 사용자에게)
                 const systemMessage = {
@@ -800,27 +1039,45 @@ io.on('connection', (socket) => {
             const { discussionId, message, userName, userRole } = data;
 
             if (!global.discussionsStore) {
-                // 참여자 아바타 조회
+                // 토론방 정보 조회 (팀명 가져오기)
+                const discussionInfo = await query(
+                    'SELECT type, team1_name, team2_name FROM discussions WHERE id = $1',
+                    [discussionId]
+                );
+
+                const discussion = discussionInfo[0];
+                let actualRole = userRole || '참여자';
+
+                // 팀전 모드인 경우 팀명으로 변환
+                if (discussion && discussion.type === '팀전') {
+                    if (userRole === 'team1' || userRole === '찬성') {
+                        actualRole = discussion.team1_name || '찬성';
+                    } else if (userRole === 'team2' || userRole === '반대') {
+                        actualRole = discussion.team2_name || '반대';
+                    }
+                }
+
+                // 참여자 아바타 조회 (userName과 discussionId로 가장 최근 것 조회)
                 const participant = await query(
-                    'SELECT avatar_image_url, avatar_color FROM participants WHERE id = $1',
-                    [socket.participantId]
+                    'SELECT avatar_image_url, avatar_color FROM participants WHERE discussion_id = $1 AND user_name = $2 ORDER BY last_seen DESC LIMIT 1',
+                    [discussionId, userName]
                 );
                 const avatarImageUrl = participant[0]?.avatar_image_url || '/images/avatars/avatar1.png';
                 const avatarColor = participant[0]?.avatar_color || '#9333ea';
 
-                // 데이터베이스에 메시지 저장
+                // 데이터베이스에 메시지 저장 (변환된 팀명 사용)
                 const result = await query(
                     `INSERT INTO messages (discussion_id, participant_id, user_name, user_role, message, message_type)
                      VALUES ($1, $2, $3, $4, $5, 'chat')
                      RETURNING id, created_at`,
-                    [discussionId, socket.participantId || null, userName, userRole, message]
+                    [discussionId, socket.participantId || null, userName, actualRole, message]
                 );
 
-                // 방의 모든 사용자에게 메시지 전송 (아바타 포함)
+                // 방의 모든 사용자에게 메시지 전송 (아바타 포함, 변환된 팀명 사용)
                 const messageData = {
                     id: result[0].id,
                     author: userName,
-                    role: userRole,
+                    role: actualRole,
                     message: message,
                     timestamp: result[0].created_at,
                     is_ai: false,
@@ -879,7 +1136,18 @@ io.on('connection', (socket) => {
 
                 io.to(`discussion-${discussionId}`).emit('new-message', messageData);
 
+                // 마지막 AI 질문 시간 업데이트 (5분 타이머 재시작)
+                const now = new Date();
+                aiQuestionTimers.set(discussionId, now);
+
+                // 모든 클라이언트에게 타이머 재시작 브로드캐스트
+                io.to(`discussion-${discussionId}`).emit('ai-timer-sync', {
+                    remainingSeconds: 300,
+                    isReady: false
+                });
+
                 console.log(`🤖 AI 질문 전송 (토론방 ${discussionId}): ${question}`);
+                console.log(`⏱️ AI 질문 타이머 재시작 → 모든 클라이언트 동기화 완료`);
             }
         } catch (error) {
             console.error('AI 질문 전송 오류:', error);
