@@ -152,6 +152,7 @@
                 <span class="btn-label">AI 분석</span>
             </button>
             <button class="action-btn" id="btn-questions">
+                <span class="btn-timer" id="aiQuestionTimer" style="display: none;">5:00</span>
                 <span class="btn-icon">🤖</span>
                 <span class="btn-label">AI 질문</span>
             </button>
@@ -182,6 +183,50 @@
                     <div id="qrCode"></div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- 입장 모달 -->
+    <div class="join-modal-overlay" id="joinModal" style="display: none;">
+        <div class="join-modal-box">
+            <button class="join-modal-close" onclick="closeJoinModal()">✕</button>
+            <h2 class="join-modal-title">토론 참여 설정</h2>
+            <p class="join-modal-description">
+                토론에 참여하려면 닉네임을 설정해주세요.<br>
+                프로필 이미지는 자동으로 할당됩니다.
+            </p>
+
+            <div class="join-modal-field">
+                <label class="join-modal-label">닉네임</label>
+                <input type="text" id="joinUserName" class="join-modal-input" placeholder="사용할 닉네임" autocomplete="off">
+            </div>
+
+            <div class="join-modal-field" id="joinRoleSection" style="display: none;">
+                <label class="join-modal-label">팀 선택</label>
+                <div class="join-modal-radio-group" id="joinRoleRadioGroup">
+                    <!-- 라디오 버튼 동적 생성 -->
+                </div>
+            </div>
+
+            <button onclick="confirmJoin()" class="join-modal-button">참여하기</button>
+        </div>
+    </div>
+
+    <!-- 비밀 토론방 입장 코드 모달 -->
+    <div class="join-modal-overlay" id="entryCodeModal" style="display: none;">
+        <div class="join-modal-box">
+            <button class="join-modal-close" onclick="closeEntryCodeModal()">✕</button>
+            <h2 class="join-modal-title">비밀 토론방</h2>
+            <p class="join-modal-description">
+                입장 코드를 입력해야 토론에 참여할 수 있습니다.
+            </p>
+
+            <div class="join-modal-field">
+                <label class="join-modal-label">입장 코드</label>
+                <input type="text" id="entryCodeInput" class="join-modal-input" placeholder="교사가 안내한 입장 코드를 입력하세요..." autocomplete="off">
+            </div>
+
+            <button onclick="verifyEntryCode()" class="join-modal-button">입장하기</button>
         </div>
     </div>
 

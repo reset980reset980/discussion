@@ -177,7 +177,7 @@ app.get('/api/discussions/:id', async (req, res) => {
 // 새 토론방 생성
 app.post('/api/discussions', async (req, res) => {
     try {
-        const { title, type, author, description, duration, isPrivate, entryCode, password } = req.body;
+        const { title, type, author, description, duration, isPrivate, entryCode, password, team1Name, team2Name } = req.body;
 
         if (!title || !author) {
             return res.status(400).json({ error: '제목과 작성자는 필수입니다.' });
@@ -202,8 +202,8 @@ app.post('/api/discussions', async (req, res) => {
         } else {
             // PostgreSQL 모드
             result = await query(
-                'INSERT INTO discussions (title, type, author, description, expires_at, is_private, entry_code) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-                [title, type || '자유', author, description || '', expiresAt, isPrivate || false, entryCode || null]
+                'INSERT INTO discussions (title, type, author, description, expires_at, is_private, entry_code, team1_name, team2_name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
+                [title, type || '자유', author, description || '', expiresAt, isPrivate || false, entryCode || null, team1Name || null, team2Name || null]
             );
         }
 
@@ -475,6 +475,155 @@ app.use((req, res) => {
     res.status(404).json({ error: '페이지를 찾을 수 없습니다.' });
 });
 
+// ==========================================
+// AI 질문 생성 API
+// ==========================================
+
+// Gemini API를 사용하여 AI 질문 생성
+app.post('/api/discussions/:id/generate-questions', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+        if (!GEMINI_API_KEY) {
+            return res.status(500).json({ error: 'Gemini API 키가 설정되지 않았습니다.' });
+        }
+
+        // 토론방 정보 조회
+        const discussions = await query('SELECT * FROM discussions WHERE id = $1', [id]);
+        if (discussions.length === 0) {
+            return res.status(404).json({ error: '토론방을 찾을 수 없습니다.' });
+        }
+        const discussion = discussions[0];
+
+        // 최근 메시지 조회 (최대 20개)
+        const messages = await query(
+            `SELECT user_name, user_role, message, created_at
+             FROM messages
+             WHERE discussion_id = $1 AND message_type = 'chat'
+             ORDER BY created_at DESC
+             LIMIT 20`,
+            [id]
+        );
+
+        if (messages.length < 3) {
+            return res.json({
+                questions: [],
+                message: '질문을 생성하기에 충분한 대화가 없습니다. (최소 3개 메시지 필요)'
+            });
+        }
+
+        // 메시지를 시간순으로 정렬 (오래된 것부터)
+        const sortedMessages = messages.reverse();
+
+        // Gemini API 호출을 위한 프롬프트 생성
+        const conversationText = sortedMessages
+            .map(m => `${m.user_name} (${m.user_role}): ${m.message}`)
+            .join('\n');
+
+        const prompt = `다음은 "${discussion.title}"에 대한 토론 내용입니다:
+
+${conversationText}
+
+위 토론 내용을 분석하여, 토론을 더 깊이 있게 만들고 다양한 관점을 이끌어낼 수 있는 **3개의 질문**을 생성해주세요.
+
+요구사항:
+1. 질문은 토론 주제와 직접 관련되어야 합니다
+2. 참여자들이 아직 다루지 않은 새로운 관점을 제시해야 합니다
+3. 찬성과 반대 양측 모두 답변할 수 있어야 합니다
+4. 구체적이고 실용적인 질문이어야 합니다
+5. 각 질문은 한 문장으로 작성해주세요
+
+JSON 형식으로 응답해주세요:
+{
+  "questions": [
+    {"question": "질문 1", "category": "카테고리1"},
+    {"question": "질문 2", "category": "카테고리2"},
+    {"question": "질문 3", "category": "카테고리3"}
+  ]
+}
+
+카테고리는 다음 중 하나를 선택: "실용성", "윤리", "경제", "사회", "기술", "환경", "정책"`;
+
+        // Gemini API 호출
+        const geminiResponse = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{ text: prompt }]
+                    }],
+                    generationConfig: {
+                        temperature: 0.7,
+                        maxOutputTokens: 1000
+                    }
+                })
+            }
+        );
+
+        if (!geminiResponse.ok) {
+            throw new Error(`Gemini API 오류: ${geminiResponse.status}`);
+        }
+
+        const geminiData = await geminiResponse.json();
+        const responseText = geminiData.candidates[0].content.parts[0].text;
+
+        // JSON 파싱 (마크다운 코드 블록 제거)
+        const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/) || responseText.match(/\{[\s\S]*\}/);
+        const questionsData = JSON.parse(jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : responseText);
+
+        // 데이터베이스에 질문 저장
+        const savedQuestions = [];
+        for (const q of questionsData.questions) {
+            const result = await query(
+                `INSERT INTO ai_questions (discussion_id, question, category, created_at)
+                 VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+                 RETURNING id, question, category, created_at`,
+                [id, q.question, q.category || '일반']
+            );
+            savedQuestions.push(result[0]);
+        }
+
+        console.log(`✨ AI 질문 ${savedQuestions.length}개 생성됨 (토론방 ${id})`);
+
+        res.json({
+            success: true,
+            questions: savedQuestions,
+            message: `${savedQuestions.length}개의 질문이 생성되었습니다.`
+        });
+
+    } catch (error) {
+        console.error('AI 질문 생성 오류:', error);
+        res.status(500).json({
+            error: 'AI 질문 생성에 실패했습니다.',
+            details: error.message
+        });
+    }
+});
+
+// 저장된 AI 질문 조회
+app.get('/api/discussions/:id/questions', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const questions = await query(
+            `SELECT id, question, category, created_at
+             FROM ai_questions
+             WHERE discussion_id = $1
+             ORDER BY created_at DESC
+             LIMIT 10`,
+            [id]
+        );
+
+        res.json({ questions });
+    } catch (error) {
+        console.error('AI 질문 조회 오류:', error);
+        res.status(500).json({ error: 'AI 질문을 조회할 수 없습니다.' });
+    }
+});
+
 // 에러 핸들러
 app.use((error, req, res, next) => {
     console.error('서버 에러:', error);
@@ -484,6 +633,18 @@ app.use((error, req, res, next) => {
 // ==========================================
 // Socket.io 실시간 통신
 // ==========================================
+
+// 랜덤 이모지 아바타 목록
+const emojiAvatars = [
+    '🐤', '🐦', '🐧', '🐥', '🦆', '🦅', '🦉', '🦜',
+    '😊', '😄', '😎', '🤓', '😇', '🥳', '🤗', '🙂',
+    '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸',
+    '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻‍❄️', '🐵'
+];
+
+function getRandomEmoji() {
+    return emojiAvatars[Math.floor(Math.random() * emojiAvatars.length)];
+}
 
 io.on('connection', (socket) => {
     console.log(`✅ 클라이언트 연결: ${socket.id}`);
@@ -498,9 +659,27 @@ io.on('connection', (socket) => {
 
             // 데이터베이스에 참여자 추가 또는 업데이트
             if (!global.discussionsStore) {
+                // 토론방 정보 조회 (팀명 가져오기)
+                const discussionInfo = await query(
+                    'SELECT type, team1_name, team2_name FROM discussions WHERE id = $1',
+                    [discussionId]
+                );
+
+                const discussion = discussionInfo[0];
+                let actualRole = userRole || '참여자';
+
+                // 팀전 모드인 경우 팀명으로 변환
+                if (discussion && discussion.type === '팀전') {
+                    if (userRole === 'team1' || userRole === '찬성') {
+                        actualRole = discussion.team1_name || '찬성';
+                    } else if (userRole === 'team2' || userRole === '반대') {
+                        actualRole = discussion.team2_name || '반대';
+                    }
+                }
+
                 // 기존 참여자 확인 (같은 토론방의 같은 이름)
                 const existing = await query(
-                    'SELECT id FROM participants WHERE discussion_id = $1 AND user_name = $2',
+                    'SELECT id, emoji_avatar, user_role FROM participants WHERE discussion_id = $1 AND user_name = $2',
                     [discussionId, userName]
                 );
 
@@ -508,17 +687,18 @@ io.on('connection', (socket) => {
                 if (existing.length > 0) {
                     // 기존 참여자가 있으면 socket_id와 is_online 업데이트
                     await query(
-                        'UPDATE participants SET socket_id = $1, is_online = true, last_seen = CURRENT_TIMESTAMP WHERE id = $2',
-                        [socket.id, existing[0].id]
+                        'UPDATE participants SET socket_id = $1, is_online = true, user_role = $2, last_seen = CURRENT_TIMESTAMP WHERE id = $3',
+                        [socket.id, actualRole, existing[0].id]
                     );
                     participantId = existing[0].id;
                 } else {
-                    // 새로운 참여자 추가
+                    // 새로운 참여자 추가 (랜덤 이모지 할당)
+                    const randomEmoji = getRandomEmoji();
                     const result = await query(
-                        `INSERT INTO participants (discussion_id, user_name, user_role, socket_id, is_online)
-                         VALUES ($1, $2, $3, $4, true)
+                        `INSERT INTO participants (discussion_id, user_name, user_role, socket_id, is_online, emoji_avatar)
+                         VALUES ($1, $2, $3, $4, true, $5)
                          RETURNING id`,
-                        [discussionId, userName, userRole || '참여자', socket.id]
+                        [discussionId, userName, actualRole, socket.id, randomEmoji]
                     );
                     participantId = result[0].id;
                 }
@@ -526,18 +706,22 @@ io.on('connection', (socket) => {
                 socket.participantId = participantId;
                 socket.discussionId = discussionId;
 
-                // 참여자 목록 조회
+                // 참여자 목록 조회 (이모지 포함)
                 const participants = await query(
-                    'SELECT id, user_name, user_role, is_online FROM participants WHERE discussion_id = $1 AND is_online = true',
+                    'SELECT id, user_name, user_role, is_online, emoji_avatar FROM participants WHERE discussion_id = $1 AND is_online = true',
                     [discussionId]
                 );
 
                 // 방의 모든 사용자에게 참여자 목록 업데이트 전송
                 io.to(`discussion-${discussionId}`).emit('participants-update', participants);
 
-                // 기존 메시지 로드하여 입장한 사용자에게만 전송
+                // 기존 메시지 로드 (이모지 포함)
                 const messages = await query(
-                    'SELECT * FROM messages WHERE discussion_id = $1 ORDER BY created_at ASC',
+                    `SELECT m.*, p.emoji_avatar
+                     FROM messages m
+                     LEFT JOIN participants p ON m.participant_id = p.id
+                     WHERE m.discussion_id = $1
+                     ORDER BY m.created_at ASC`,
                     [discussionId]
                 );
 
@@ -571,6 +755,13 @@ io.on('connection', (socket) => {
             const { discussionId, message, userName, userRole } = data;
 
             if (!global.discussionsStore) {
+                // 참여자 이모지 조회
+                const participant = await query(
+                    'SELECT emoji_avatar FROM participants WHERE id = $1',
+                    [socket.participantId]
+                );
+                const emojiAvatar = participant[0]?.emoji_avatar || '😊';
+
                 // 데이터베이스에 메시지 저장
                 const result = await query(
                     `INSERT INTO messages (discussion_id, participant_id, user_name, user_role, message, message_type)
@@ -579,7 +770,7 @@ io.on('connection', (socket) => {
                     [discussionId, socket.participantId || null, userName, userRole, message]
                 );
 
-                // 방의 모든 사용자에게 메시지 전송
+                // 방의 모든 사용자에게 메시지 전송 (이모지 포함)
                 const messageData = {
                     id: result[0].id,
                     author: userName,
@@ -587,7 +778,8 @@ io.on('connection', (socket) => {
                     message: message,
                     timestamp: result[0].created_at,
                     is_ai: false,
-                    message_type: 'chat'
+                    message_type: 'chat',
+                    emoji_avatar: emojiAvatar
                 };
 
                 io.to(`discussion-${discussionId}`).emit('new-message', messageData);
@@ -595,6 +787,56 @@ io.on('connection', (socket) => {
         } catch (error) {
             console.error('메시지 전송 오류:', error);
             socket.emit('error', { message: '메시지 전송에 실패했습니다.' });
+        }
+    });
+
+    // Heartbeat - 클라이언트 활성 상태 확인
+    socket.on('heartbeat', async () => {
+        try {
+            if (socket.participantId) {
+                // 마지막 활동 시간 업데이트
+                await query(
+                    'UPDATE participants SET last_seen = CURRENT_TIMESTAMP WHERE id = $1',
+                    [socket.participantId]
+                );
+            }
+        } catch (error) {
+            console.error('Heartbeat 처리 오류:', error);
+        }
+    });
+
+    // AI 질문 전송 - 채팅창에 메시지로 표시
+    socket.on('send-ai-question', async (data) => {
+        try {
+            const { discussionId, question, category, questionNumber } = data;
+
+            if (!global.discussionsStore) {
+                // 데이터베이스에 AI 질문 메시지 저장
+                const result = await query(
+                    `INSERT INTO messages (discussion_id, user_name, user_role, message, message_type, is_ai)
+                     VALUES ($1, $2, $3, $4, 'ai-question', true)
+                     RETURNING id, created_at`,
+                    [discussionId, 'AI', 'AI 어시스턴트', `[${category}] ${question}`]
+                );
+
+                // 방의 모든 사용자에게 AI 질문 메시지 전송
+                const messageData = {
+                    id: result[0].id,
+                    author: 'AI',
+                    role: 'AI 어시스턴트',
+                    message: `🤖 Q${questionNumber}. [${category}] ${question}`,
+                    timestamp: result[0].created_at,
+                    is_ai: true,
+                    message_type: 'ai-question'
+                };
+
+                io.to(`discussion-${discussionId}`).emit('new-message', messageData);
+
+                console.log(`🤖 AI 질문 전송 (토론방 ${discussionId}): ${question}`);
+            }
+        } catch (error) {
+            console.error('AI 질문 전송 오류:', error);
+            socket.emit('error', { message: 'AI 질문 전송에 실패했습니다.' });
         }
     });
 
@@ -606,7 +848,7 @@ io.on('connection', (socket) => {
             if (!global.discussionsStore && socket.participantId && socket.discussionId) {
                 // 참여자 오프라인 처리
                 await query(
-                    'UPDATE participants SET is_online = false WHERE id = $1',
+                    'UPDATE participants SET is_online = false, last_seen = CURRENT_TIMESTAMP WHERE id = $1',
                     [socket.participantId]
                 );
 

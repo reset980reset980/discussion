@@ -13,10 +13,13 @@ let currentUser = {
     role: null
 };
 
+// 토론방 정보 저장 변수
+let discussionInfo = null;
+
 // ==========================================
 // 초기화
 // ==========================================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // URL에서 토론방 ID 가져오기
     const urlParams = new URLSearchParams(window.location.search);
     currentDiscussionId = urlParams.get('id');
@@ -27,25 +30,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    // 사용자 이름 가져오기 (localStorage에서 먼저 확인)
-    let userName = localStorage.getItem('discussionUserName');
+    // 토론방 정보를 먼저 로드
+    await loadDiscussionInfoForJoin();
 
-    if (!userName) {
-        userName = prompt('이름을 입력하세요:');
-        if (!userName) {
-            window.location.href = '/';
-            return;
-        }
-        // localStorage에 저장
-        localStorage.setItem('discussionUserName', userName);
-    }
-
-    currentUser.name = userName;
-
-    // 초기화
+    // 초기화 (입장 후에 호출됨)
     initializeEventListeners();
-    loadDiscussionInfo();
-    initializeSocket();
 });
 
 // ==========================================
@@ -147,7 +136,13 @@ function initializeEventListeners() {
         settingsBtn.addEventListener('click', () => {
             const newName = prompt('새로운 이름을 입력하세요:', currentUser.name);
             if (newName && newName !== currentUser.name) {
-                localStorage.setItem('discussionUserName', newName);
+                // 방별로 사용자 정보 업데이트
+                const savedUser = localStorage.getItem(`room_${currentDiscussionId}_user`);
+                if (savedUser) {
+                    const userData = JSON.parse(savedUser);
+                    userData.name = newName;
+                    localStorage.setItem(`room_${currentDiscussionId}_user`, JSON.stringify(userData));
+                }
                 alert('이름이 변경되었습니다. 페이지를 새로고침합니다.');
                 location.reload();
             }
@@ -163,11 +158,14 @@ function initializeEventListeners() {
         openSidebar('analysis', 'AI 분석');
     });
 
-    document.getElementById('btn-questions').addEventListener('click', () => {
-        openSidebar('questions', 'AI 질문');
-    });
+    // AI 질문 버튼 - 채팅창에 질문 전송
+    const btnQuestions = document.getElementById('btn-questions');
+    btnQuestions.addEventListener('click', generateAndSendQuestion);
 
     document.getElementById('closeSidebarBtn').addEventListener('click', closeSidebar);
+
+    // 최초 5분 동안 AI 질문 버튼 비활성화
+    startInitialTimer();
 
     // 분석 새로고침
     const refreshBtn = document.getElementById('refreshAnalysisBtn');
@@ -183,7 +181,90 @@ function initializeEventListeners() {
 }
 
 // ==========================================
-// 토론방 정보 로드
+// 토론방 정보 로드 (입장 전)
+// ==========================================
+async function loadDiscussionInfoForJoin() {
+    try {
+        const response = await fetch(`/api/discussions/${currentDiscussionId}`);
+        const data = await response.json();
+
+        if (response.ok) {
+            discussionInfo = data;
+            document.getElementById('roomTitle').textContent = data.title;
+
+            // 팀전이면 역할 선택 표시
+            const roleSection = document.getElementById('joinRoleSection');
+            const roleRadioGroup = document.getElementById('joinRoleRadioGroup');
+
+            if (data.type === '팀전') {
+                roleSection.style.display = 'flex';
+                const team1Name = data.team1_name || '찬성';
+                const team2Name = data.team2_name || '반대';
+
+                roleRadioGroup.innerHTML = `
+                    <div class="join-modal-radio-item">
+                        <input type="radio" id="roleTeam1" name="userRole" value="team1" checked>
+                        <label for="roleTeam1">${team1Name}</label>
+                    </div>
+                    <div class="join-modal-radio-item">
+                        <input type="radio" id="roleTeam2" name="userRole" value="team2">
+                        <label for="roleTeam2">${team2Name}</label>
+                    </div>
+                `;
+            } else if (data.type === '역할극') {
+                roleSection.style.display = 'flex';
+                // 역할극은 나중에 구현
+                roleRadioGroup.innerHTML = `
+                    <div class="join-modal-radio-item">
+                        <input type="radio" id="roleParticipant" name="userRole" value="참여자" checked>
+                        <label for="roleParticipant">참여자</label>
+                    </div>
+                `;
+            } else {
+                roleSection.style.display = 'none';
+            }
+
+            console.log('토론방 정보 로드 완료:', data);
+
+            // 비밀방이면 입장 코드 확인
+            if (data.is_private) {
+                // 이미 입장 코드를 확인한 적이 있는지 체크
+                const verifiedCode = sessionStorage.getItem(`room_${currentDiscussionId}_verified`);
+                if (!verifiedCode) {
+                    // 입장 코드 모달 표시
+                    document.getElementById('entryCodeModal').style.display = 'flex';
+                    return;
+                }
+            }
+
+            // 비밀방이 아니거나 이미 확인된 경우 입장 모달 표시
+            showJoinModal();
+
+        } else {
+            throw new Error(data.error || '토론방 정보를 불러올 수 없습니다');
+        }
+    } catch (error) {
+        console.error('토론방 정보 로드 실패:', error);
+        alert(error.message);
+        window.location.href = '/';
+    }
+}
+
+// 입장 모달 표시
+function showJoinModal() {
+    // 이 방에 저장된 사용자 정보 확인
+    const savedUser = localStorage.getItem(`room_${currentDiscussionId}_user`);
+    if (savedUser) {
+        const userData = JSON.parse(savedUser);
+        document.getElementById('joinUserName').value = userData.name;
+    }
+
+    // 입장 모달 표시
+    document.getElementById('joinModal').style.display = 'flex';
+}
+
+// ==========================================
+// 토론방 정보 로드 (입장 후)
 // ==========================================
 async function loadDiscussionInfo() {
     try {
@@ -203,6 +284,94 @@ async function loadDiscussionInfo() {
 }
 
 // ==========================================
+// 입장 확인
+// ==========================================
+function confirmJoin() {
+    const userName = document.getElementById('joinUserName').value.trim();
+
+    if (!userName) {
+        alert('이름을 입력해주세요');
+        return;
+    }
+
+    let userRole = '참여자';
+    const roleSection = document.getElementById('joinRoleSection');
+
+    if (roleSection.style.display === 'flex') {
+        const selectedRadio = document.querySelector('input[name="userRole"]:checked');
+        if (selectedRadio) {
+            userRole = selectedRadio.value;
+        }
+    }
+
+    // 사용자 정보 저장
+    currentUser.name = userName;
+    currentUser.role = userRole;
+
+    // 이 방에 사용자 정보 저장 (방별로 독립적)
+    localStorage.setItem(`room_${currentDiscussionId}_user`, JSON.stringify({
+        name: userName,
+        role: userRole
+    }));
+
+    // 모달 닫기
+    document.getElementById('joinModal').style.display = 'none';
+
+    // Socket 초기화 및 입장
+    initializeSocket();
+}
+
+function closeJoinModal() {
+    // 뒤로가기
+    window.location.href = '/';
+}
+
+// ==========================================
+// 비밀 토론방 입장 코드 확인
+// ==========================================
+async function verifyEntryCode() {
+    const entryCode = document.getElementById('entryCodeInput').value.trim();
+
+    if (!entryCode) {
+        alert('입장 코드를 입력해주세요');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/discussions/${currentDiscussionId}/verify-entry`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ entryCode })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            // 세션에 확인 완료 저장
+            sessionStorage.setItem(`room_${currentDiscussionId}_verified`, 'true');
+
+            // 입장 코드 모달 닫기
+            document.getElementById('entryCodeModal').style.display = 'none';
+
+            // 입장 모달 표시
+            showJoinModal();
+        } else {
+            alert(data.error || '입장 코드가 틀렸습니다');
+        }
+    } catch (error) {
+        console.error('입장 코드 확인 오류:', error);
+        alert('입장 코드 확인 중 오류가 발생했습니다');
+    }
+}
+
+function closeEntryCodeModal() {
+    // 뒤로가기
+    window.location.href = '/';
+}
+
+// ==========================================
 // Socket.io 실시간 통신
 // ==========================================
 function initializeSocket() {
@@ -219,6 +388,9 @@ function initializeSocket() {
             userName: currentUser.name,
             userRole: currentUser.role || '참여자'
         });
+
+        // Heartbeat 시작 - 30초마다 서버에 알림
+        startHeartbeat();
     });
 
     // 기존 메시지 로드 (입장 시 한 번)
@@ -296,11 +468,11 @@ function addMessageToUI(data) {
     if (data.message_type === 'system' || data.author === 'System') {
         messageEl.className = 'system-message';
         messageEl.innerHTML = `<span>${escapeHtml(data.message)}</span>`;
-    } else {
-        // 일반 메시지
-        messageEl.className = 'message';
+    } else if (data.is_ai || data.message_type === 'ai-question') {
+        // AI 질문 메시지
+        messageEl.className = 'message ai-message';
         messageEl.innerHTML = `
-            <div class="message-avatar">${data.author.charAt(0)}</div>
+            <div class="message-avatar">🤖</div>
             <div class="message-content">
                 <div class="message-header">
                     <span class="message-author">${data.author}</span>
@@ -310,10 +482,33 @@ function addMessageToUI(data) {
                 <div class="message-text">${escapeHtml(data.message)}</div>
             </div>
         `;
+    } else {
+        // 일반 메시지 (이모지 + 이름 [역할] 형식)
+        const emoji = data.emoji_avatar || '😊';
+        const roleClass = getRoleClass(data.role);
+
+        messageEl.className = 'message';
+        messageEl.innerHTML = `
+            <div class="message-avatar">${emoji}</div>
+            <div class="message-content">
+                <div class="message-header">
+                    <span class="message-author">${escapeHtml(data.author)} <span class="message-role ${roleClass}">[${escapeHtml(data.role)}]</span></span>
+                    <span class="message-time">${time}</span>
+                </div>
+                <div class="message-text">${escapeHtml(data.message)}</div>
+            </div>
+        `;
     }
 
     messageList.appendChild(messageEl);
     scrollToBottom();
+}
+
+// 역할에 따른 CSS 클래스 반환
+function getRoleClass(role) {
+    if (role === '찬성') return 'role-pros';
+    if (role === '반대') return 'role-cons';
+    return 'role-neutral';
 }
 
 function scrollToBottom() {
@@ -345,17 +540,20 @@ function updateParticipantsList(participants) {
         return;
     }
 
-    // 참여자 목록 HTML 생성
-    participantsList.innerHTML = participants.map(p => `
-        <div class="participant-item">
-            <div class="participant-avatar">${p.user_name.charAt(0)}</div>
-            <div class="participant-info">
-                <div class="participant-name">${p.user_name}${p.user_name === currentUser.name ? ' (나)' : ''}</div>
-                <div class="participant-role">${p.user_role || '참여자'}</div>
+    // 참여자 목록 HTML 생성 (이모지 + 이름 [역할] 형식)
+    participantsList.innerHTML = participants.map(p => {
+        const emoji = p.emoji_avatar || '😊';
+        const roleClass = getRoleClass(p.user_role);
+        return `
+            <div class="participant-item">
+                <div class="participant-avatar">${emoji}</div>
+                <div class="participant-info">
+                    <div class="participant-name">${p.user_name}${p.user_name === currentUser.name ? ' (나)' : ''} <span class="participant-role ${roleClass}">[${p.user_role || '참여자'}]</span></div>
+                </div>
+                <div class="participant-status ${p.is_online ? '' : 'offline'}"></div>
             </div>
-            <div class="participant-status ${p.is_online ? '' : 'offline'}"></div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 
     // 통계 업데이트
     const onlineCount = participants.filter(p => p.is_online).length;
@@ -390,32 +588,99 @@ async function loadAnalysis() {
 }
 
 // ==========================================
-// AI 질문 기능
+// AI 질문 기능 (채팅창 전송)
 // ==========================================
-async function loadQuestions() {
-    console.log('AI 질문 로드 중...');
+let initialTimer = null;
+let isAIQuestionReady = false;
 
-    // 타이머 시작
-    startQuestionTimer();
-
-    // TODO: 실제 질문 데이터 로드
-}
-
-function startQuestionTimer() {
+// 최초 5분 타이머 - AI 질문 버튼 활성화 대기
+function startInitialTimer() {
     let timeLeft = 300; // 5분 = 300초
-    const timerEl = document.getElementById('timeRemaining');
+    const btnQuestions = document.getElementById('btn-questions');
+    const timerBadge = document.getElementById('aiQuestionTimer');
 
-    const interval = setInterval(() => {
+    // 타이머 뱃지 표시
+    timerBadge.style.display = 'block';
+
+    // 버튼 비활성화
+    btnQuestions.disabled = true;
+    btnQuestions.style.opacity = '0.5';
+    btnQuestions.style.cursor = 'not-allowed';
+
+    initialTimer = setInterval(() => {
         timeLeft--;
         const minutes = Math.floor(timeLeft / 60);
         const seconds = timeLeft % 60;
-        timerEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        timerBadge.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
         if (timeLeft <= 0) {
-            clearInterval(interval);
-            // TODO: AI 질문 생성 요청
+            clearInterval(initialTimer);
+            isAIQuestionReady = true;
+
+            // 타이머 뱃지 숨김
+            timerBadge.style.display = 'none';
+
+            // 버튼 활성화
+            btnQuestions.disabled = false;
+            btnQuestions.style.opacity = '1';
+            btnQuestions.style.cursor = 'pointer';
+
+            console.log('✅ AI 질문 기능 활성화됨');
         }
     }, 1000);
+}
+
+// AI 질문 생성 및 채팅창 전송
+async function generateAndSendQuestion() {
+    if (!isAIQuestionReady) {
+        alert('토론이 충분히 진행된 후 AI 질문을 생성할 수 있습니다.');
+        return;
+    }
+
+    const btnQuestions = document.getElementById('btn-questions');
+    const originalText = btnQuestions.querySelector('.btn-label').textContent;
+
+    try {
+        // 버튼 로딩 상태
+        btnQuestions.disabled = true;
+        btnQuestions.querySelector('.btn-label').textContent = '생성 중...';
+
+        const response = await fetch(`/api/discussions/${currentDiscussionId}/generate-questions`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            console.log('✨ AI 질문 생성 완료:', data.questions);
+
+            // Socket.io로 AI 질문 메시지 전송 요청
+            if (socket && socket.connected) {
+                data.questions.forEach((q, index) => {
+                    socket.emit('send-ai-question', {
+                        discussionId: currentDiscussionId,
+                        question: q.question,
+                        category: q.category,
+                        questionNumber: index + 1
+                    });
+                });
+            }
+
+            // 버튼 복원
+            btnQuestions.disabled = false;
+            btnQuestions.querySelector('.btn-label').textContent = originalText;
+
+        } else {
+            throw new Error(data.error || data.message || '질문 생성 실패');
+        }
+    } catch (error) {
+        console.error('AI 질문 생성 오류:', error);
+        alert(`AI 질문 생성 실패: ${error.message}`);
+
+        // 버튼 복원
+        btnQuestions.disabled = false;
+        btnQuestions.querySelector('.btn-label').textContent = originalText;
+    }
 }
 
 // ==========================================
@@ -451,14 +716,60 @@ function downloadPDF() {
 }
 
 // ==========================================
+// Heartbeat 메커니즘
+// ==========================================
+let heartbeatInterval = null;
+
+function startHeartbeat() {
+    // 기존 heartbeat가 있으면 정리
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+    }
+
+    // 30초마다 서버에 heartbeat 전송
+    heartbeatInterval = setInterval(() => {
+        if (socket && socket.connected) {
+            socket.emit('heartbeat');
+            console.log('💓 Heartbeat 전송');
+        }
+    }, 30000); // 30초
+
+    console.log('💓 Heartbeat 시작 (30초 간격)');
+}
+
+function stopHeartbeat() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+        console.log('💓 Heartbeat 중지');
+    }
+}
+
+// ==========================================
 // 기타
 // ==========================================
 function closeRoom() {
+    // Heartbeat 중지
+    stopHeartbeat();
+
     if (confirm('토론방을 나가시겠습니까?')) {
+        // Socket 연결 종료
+        if (socket) {
+            socket.disconnect();
+        }
         window.location.href = '/';
     }
 }
 
+// 브라우저 창 닫을 때 처리
+window.addEventListener('beforeunload', () => {
+    stopHeartbeat();
+    if (socket) {
+        socket.disconnect();
+    }
+});
+
 // 전역 함수
 window.closeShareModal = closeShareModal;
 window.copyUrl = copyUrl;
+window.generateQuestions = generateQuestions;

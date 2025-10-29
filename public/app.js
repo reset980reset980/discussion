@@ -431,6 +431,8 @@ async function handleNewDiscussion(e) {
         duration: duration,
         prosName: document.getElementById('prosName')?.value || '찬성',
         consName: document.getElementById('consName')?.value || '반대',
+        team1Name: document.getElementById('prosName')?.value || '찬성',
+        team2Name: document.getElementById('consName')?.value || '반대',
         roleList: document.getElementById('roleList')?.value || '',
         isPrivate: isPrivate,
         entryCode: entryCode
