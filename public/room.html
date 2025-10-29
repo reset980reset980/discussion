@@ -217,10 +217,68 @@
                             <!-- 흐름 시각화 탭 -->
                             <div class="tab-content" id="tab-flow">
                                 <div class="flow-intro">
-                                    <p>토론의 흐름을 시각적 타임라인으로 확인하세요.</p>
+                                    <p>토론의 시간대별 흐름, 참여자 간의 상호작용, 핵심 키워드 변화를 시각적으로 분석하여 토론의 역학 관계를 한눈에 파악할 수 있도록 돕습니다.</p>
                                 </div>
-                                <div id="flow-timeline" class="flow-timeline">
-                                    <!-- 타임라인이 여기에 동적으로 생성됩니다 -->
+
+                                <!-- 흐름 분석 시작 전 -->
+                                <div id="flow-start-view">
+                                    <button class="btn-start-verdict" id="startFlowBtn">
+                                        <span>📊</span>
+                                        <span>AI 흐름 분석 시작하기</span>
+                                    </button>
+                                    <p class="verdict-hint">토론 내용을 분석하여 토론 타임라인, 참여자 통계, 흐름 트렌드를 생성합니다.</p>
+                                </div>
+
+                                <!-- 로딩 상태 -->
+                                <div id="flow-loading-view" style="display: none;">
+                                    <div class="loading-spinner"></div>
+                                    <p class="loading-text">AI가 토론 흐름을 분석하고 있습니다...</p>
+                                    <div class="skeleton-box"></div>
+                                    <div class="skeleton-box"></div>
+                                </div>
+
+                                <!-- 흐름 분석 결과 -->
+                                <div id="flow-result-view" style="display: none;">
+                                    <!-- 토론 타임라인 -->
+                                    <div class="flow-section">
+                                        <h3 class="flow-section-title">📖 토론 타임라인</h3>
+                                        <div id="flowTimeline" class="flow-timeline-ai"></div>
+                                    </div>
+
+                                    <!-- 차트 컨테이너 -->
+                                    <div class="charts-container">
+                                        <!-- 참여자별 발언 비중 (도넛 차트) -->
+                                        <div class="chart-section">
+                                            <h3 class="chart-title">참여자별 발언 비중</h3>
+                                            <div class="chart-wrapper">
+                                                <canvas id="participantChart"></canvas>
+                                            </div>
+                                        </div>
+
+                                        <!-- 참여자 상호작용 (레이더 차트) -->
+                                        <div class="chart-section">
+                                            <h3 class="chart-title">참여자 상호작용</h3>
+                                            <div class="chart-wrapper">
+                                                <canvas id="interactionChart"></canvas>
+                                            </div>
+                                        </div>
+
+                                        <!-- 토론 흐름 트렌드 (면적 그래프) -->
+                                        <div class="chart-section full-width">
+                                            <h3 class="chart-title">토론 흐름 트렌드</h3>
+                                            <div class="chart-wrapper">
+                                                <canvas id="trendChart"></canvas>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 하단 버튼 -->
+                                    <div class="verdict-actions">
+                                        <button class="btn-secondary" id="reanalyzeFlowBtn">
+                                            <span>🔄</span>
+                                            <span>다시 분석하기</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -251,40 +309,60 @@
                                 <div id="verdict-result-view" style="display: none;">
                                     <div class="verdict-document">
                                         <div class="verdict-header">
-                                            <h2>판 결 문</h2>
-                                            <div class="verdict-number" id="verdictNumber"></div>
+                                            <h2>토론 판결문</h2>
+                                            <p class="verdict-subtitle">AI가 분석한 토론 최종 보고서</p>
                                         </div>
 
-                                        <div class="verdict-section">
-                                            <h3>1. 사건 개요</h3>
-                                            <p id="verdictCase"></p>
-                                        </div>
+                                        <!-- 서론 -->
+                                        <div class="verdict-major-section">
+                                            <h3 class="major-section-title"><span>📖</span> 서론</h3>
 
-                                        <div class="verdict-section">
-                                            <h3>2. 당사자 주장 요지</h3>
-                                            <div class="verdict-subsection">
-                                                <h4>가. 찬성 측 주장</h4>
-                                                <p id="verdictProsClaim"></p>
+                                            <div class="verdict-section">
+                                                <h4>토론 개요</h4>
+                                                <p id="verdictOverview"></p>
                                             </div>
-                                            <div class="verdict-subsection">
-                                                <h4>나. 반대 측 주장</h4>
-                                                <p id="verdictConsClaim"></p>
+
+                                            <div class="verdict-section">
+                                                <h4>논의 배경</h4>
+                                                <p id="verdictBackground"></p>
+                                            </div>
+
+                                            <div class="verdict-section">
+                                                <h4>주요 쟁점</h4>
+                                                <div id="verdictIssues"></div>
                                             </div>
                                         </div>
 
-                                        <div class="verdict-section">
-                                            <h3>3. 판단</h3>
-                                            <p id="verdictJudgment"></p>
+                                        <!-- 본론 -->
+                                        <div class="verdict-major-section">
+                                            <h3 class="major-section-title"><span>📄</span> 본론</h3>
+                                            <div id="verdictMainBody"></div>
                                         </div>
 
+                                        <!-- 특이점 및 인사이트 -->
                                         <div class="verdict-section">
-                                            <h3>4. 결론</h3>
-                                            <p id="verdictConclusion"></p>
+                                            <h4>특이점 및 인사이트</h4>
+                                            <div id="verdictInsights"></div>
                                         </div>
 
-                                        <div class="verdict-footer">
-                                            <p id="verdictDate"></p>
-                                            <p class="verdict-sign">AI 판사 Claude</p>
+                                        <!-- 결론 -->
+                                        <div class="verdict-major-section">
+                                            <h3 class="major-section-title"><span>⚖</span> 결론</h3>
+
+                                            <div class="verdict-section">
+                                                <h4>토론 결과 요약</h4>
+                                                <p id="verdictSummary"></p>
+                                            </div>
+
+                                            <div class="verdict-section">
+                                                <h4>미해결 과제 및 제언</h4>
+                                                <p id="verdictRecommendations"></p>
+                                            </div>
+
+                                            <div class="verdict-section">
+                                                <h4>토론의 의의</h4>
+                                                <p id="verdictSignificance"></p>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -414,6 +492,8 @@
 
     <!-- Socket.io -->
     <script src="/socket.io/socket.io.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!-- html2canvas for screen capture -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- jsPDF for PDF generation -->

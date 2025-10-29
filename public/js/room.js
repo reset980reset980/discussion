@@ -922,11 +922,6 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         // 클릭한 탭 활성화
         btn.classList.add('active');
         document.getElementById('tab-' + targetTab).classList.add('active');
-
-        // 흐름 시각화 탭이 열릴 때 렌더링
-        if (targetTab === 'flow') {
-            setTimeout(() => renderFlowVisualization(), 100);
-        }
     });
 });
 
@@ -1187,49 +1182,519 @@ if (downloadPdfBtn2) {
 
 // ========================================== 흐름 시각화 탭 ==========================================
 
-// 흐름 시각화 렌더링
-function renderFlowVisualization() {
-    const flowTimeline = document.getElementById('flow-timeline');
-    if (!flowTimeline) return;
+// Chart.js 인스턴스 저장
+let participantChartInstance = null;
+let interactionChartInstance = null;
+let trendChartInstance = null;
+let flowAnalysisResult = null;
 
-    const messages = collectChatMessages();
+// 흐름 분석 시작 버튼
+const startFlowBtn = document.getElementById('startFlowBtn');
+if (startFlowBtn) {
+    startFlowBtn.addEventListener('click', async () => {
+        const messages = collectChatMessages();
 
-    if (messages.length === 0) {
-        flowTimeline.innerHTML = '<div class="empty-state"><p>아직 토론 메시지가 없습니다.</p></div>';
-        return;
-    }
-
-    flowTimeline.innerHTML = '';
-
-    messages.forEach((msg, index) => {
-        const flowItem = document.createElement('div');
-        flowItem.className = 'flow-item';
-
-        // 찬성/반대에 따라 왼쪽/오른쪽 배치
-        if (msg.role === '찬성') {
-            flowItem.classList.add('flow-item-pros');
-        } else if (msg.role === '반대') {
-            flowItem.classList.add('flow-item-cons');
-        } else {
-            flowItem.classList.add('flow-item-neutral');
+        // 최소 10개 메시지 체크
+        if (messages.length < 10) {
+            alert('AI 흐름 분석을 실행하려면 최소 10개 이상의 메시지가 필요합니다.');
+            return;
         }
 
-        const roleClass = msg.role === '찬성' ? 'pros-badge' :
-                         msg.role === '반대' ? 'cons-badge' : 'neutral-badge';
+        // 뷰 전환: 시작 -> 로딩
+        document.getElementById('flow-start-view').style.display = 'none';
+        document.getElementById('flow-loading-view').style.display = 'block';
 
-        flowItem.innerHTML = `
-            <div class="flow-item-marker"></div>
-            <div class="flow-item-content">
-                <div class="flow-item-header">
-                    <span class="flow-item-author">${msg.author}</span>
-                    <span class="flow-item-role ${roleClass}">[${msg.role}]</span>
-                </div>
-                <div class="flow-item-message">${msg.message}</div>
-                <div class="flow-item-number">#${index + 1}</div>
-            </div>
-        `;
+        try {
+            // Gemini API 호출
+            const response = await fetch('/api/analyze-flow', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    discussion_id: currentDiscussionId,
+                    messages: messages
+                })
+            });
 
-        flowTimeline.appendChild(flowItem);
+            if (!response.ok) {
+                throw new Error('흐름 분석 실패');
+            }
+
+            const result = await response.json();
+            flowAnalysisResult = result;
+
+            // 결과 렌더링
+            renderFlowAnalysisResult(result);
+
+            // 뷰 전환: 로딩 -> 결과
+            document.getElementById('flow-loading-view').style.display = 'none';
+            document.getElementById('flow-result-view').style.display = 'block';
+
+        } catch (error) {
+            console.error('AI 흐름 분석 오류:', error);
+            alert('AI 흐름 분석 중 오류가 발생했습니다: ' + error.message);
+
+            // 뷰 전환: 로딩 -> 시작
+            document.getElementById('flow-loading-view').style.display = 'none';
+            document.getElementById('flow-start-view').style.display = 'block';
+        }
+    });
+}
+
+// 다시 분석하기 버튼
+const reanalyzeFlowBtn = document.getElementById('reanalyzeFlowBtn');
+if (reanalyzeFlowBtn) {
+    reanalyzeFlowBtn.addEventListener('click', () => {
+        // 뷰 초기화
+        document.getElementById('flow-result-view').style.display = 'none';
+        document.getElementById('flow-start-view').style.display = 'block';
+        flowAnalysisResult = null;
+
+        // 차트 파괴
+        if (participantChartInstance) participantChartInstance.destroy();
+        if (interactionChartInstance) interactionChartInstance.destroy();
+        if (trendChartInstance) trendChartInstance.destroy();
+    });
+}
+
+// AI 흐름 분석 결과 렌더링
+function renderFlowAnalysisResult(result) {
+    // 1. 타임라인 렌더링
+    if (result.timeline && Array.isArray(result.timeline)) {
+        const timelineContainer = document.getElementById('flowTimeline');
+        timelineContainer.innerHTML = '';
+
+        result.timeline.forEach(moment => {
+            const momentDiv = document.createElement('div');
+            momentDiv.className = 'timeline-moment';
+            momentDiv.innerHTML = `
+                <div class="timeline-moment-time">${moment.time || '시간'}</div>
+                <div class="timeline-moment-title">${moment.title}</div>
+                <div class="timeline-moment-description">${moment.description}</div>
+            `;
+            timelineContainer.appendChild(momentDiv);
+        });
+    }
+
+    // 2. 참여자별 발언 비중 차트
+    if (result.participant_stats) {
+        renderParticipantChartFromAI(result.participant_stats);
+    }
+
+    // 3. 참여자 상호작용 차트
+    if (result.interaction_stats) {
+        renderInteractionChartFromAI(result.interaction_stats);
+    }
+
+    // 4. 토론 흐름 트렌드 차트
+    if (result.trend_data) {
+        renderTrendChartFromAI(result.trend_data);
+    }
+}
+
+// 1. 참여자별 발언 비중 도넛 차트 (AI 데이터 사용)
+function renderParticipantChartFromAI(participantStats) {
+    const canvas = document.getElementById('participantChart');
+    if (!canvas) return;
+
+    const labels = participantStats.map(p => p.name);
+    const data = participantStats.map(p => p.count);
+    const colors = participantStats.map(p => {
+        if (p.role === '찬성') return 'rgba(16, 185, 129, 0.8)';
+        if (p.role === '반대') return 'rgba(239, 68, 68, 0.8)';
+        return 'rgba(107, 114, 128, 0.8)';
+    });
+
+    // 기존 차트 파괴
+    if (participantChartInstance) {
+        participantChartInstance.destroy();
+    }
+
+    // 차트 생성
+    participantChartInstance = new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors,
+                borderColor: 'white',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 15,
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((value / total) * 100).toFixed(1);
+                            return `${label}: ${value}회 (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// 2. AI 기반 상호작용 레이더 차트
+function renderInteractionChartFromAI(interactionStats) {
+    const canvas = document.getElementById('interactionChart');
+    if (!canvas) return;
+
+    // AI가 제공한 상호작용 통계 데이터 사용
+    // 예상 구조: [{name, messageCount, responseCount, avgLength, role}]
+    const datasets = interactionStats.map((participant, idx) => {
+        let color = 'rgba(107, 114, 128, 0.6)';
+        if (participant.role === '찬성') color = 'rgba(16, 185, 129, 0.6)';
+        if (participant.role === '반대') color = 'rgba(239, 68, 68, 0.6)';
+
+        return {
+            label: participant.name,
+            data: [
+                participant.messageCount || 0,
+                participant.responseCount || 0,
+                (participant.avgLength || 0) / 10  // 스케일 조정
+            ],
+            backgroundColor: color,
+            borderColor: color.replace('0.6', '1'),
+            borderWidth: 2
+        };
+    });
+
+    // 기존 차트 파괴
+    if (interactionChartInstance) {
+        interactionChartInstance.destroy();
+    }
+
+    // 차트 생성
+    interactionChartInstance = new Chart(canvas, {
+        type: 'radar',
+        data: {
+            labels: ['발언 횟수', '응답 횟수', '평균 발언 길이'],
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 5
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 15,
+                        font: {
+                            size: 12
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// 3. AI 기반 토론 흐름 트렌드 면적 그래프
+function renderTrendChartFromAI(trendData) {
+    const canvas = document.getElementById('trendChart');
+    if (!canvas) return;
+
+    // AI가 제공한 트렌드 데이터 사용
+    // 예상 구조: {labels: ['#1', '#2', ...], pros: [1, 2, 3, ...], cons: [1, 1, 2, ...]}
+    const labels = trendData.labels || [];
+    const prosData = trendData.pros || [];
+    const consData = trendData.cons || [];
+
+    // 기존 차트 파괴
+    if (trendChartInstance) {
+        trendChartInstance.destroy();
+    }
+
+    // 차트 생성
+    trendChartInstance = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: '찬성 발언',
+                    data: prosData,
+                    backgroundColor: 'rgba(16, 185, 129, 0.3)',
+                    borderColor: 'rgba(16, 185, 129, 1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                },
+                {
+                    label: '반대 발언',
+                    data: consData,
+                    backgroundColor: 'rgba(239, 68, 68, 0.3)',
+                    borderColor: 'rgba(239, 68, 68, 1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: '메시지 순서'
+                    },
+                    ticks: {
+                        maxTicksLimit: 10
+                    }
+                },
+                y: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: '누적 발언 수'
+                    },
+                    beginAtZero: true
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 15,
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            },
+            interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
+            }
+        }
+    });
+}
+
+// 2. 참여자 상호작용 레이더 차트 (기존 버전 - 사용 안 함)
+function renderInteractionChart(messages) {
+    const canvas = document.getElementById('interactionChart');
+    if (!canvas) return;
+
+    // 참여자별 상호작용 지표 계산
+    const participants = {};
+    messages.forEach((msg, index) => {
+        const name = msg.author || 'Unknown';
+        if (!participants[name]) {
+            participants[name] = {
+                messageCount: 0,
+                avgLength: 0,
+                totalLength: 0,
+                responses: 0  // 다른 사람 메시지 이후 발언
+            };
+        }
+        participants[name].messageCount++;
+        participants[name].totalLength += (msg.message || '').length;
+
+        // 응답 카운트 (이전 메시지가 다른 사람이면 응답으로 간주)
+        if (index > 0 && messages[index - 1].author !== name) {
+            participants[name].responses++;
+        }
+    });
+
+    // 평균 길이 계산
+    Object.keys(participants).forEach(name => {
+        const p = participants[name];
+        p.avgLength = p.totalLength / p.messageCount;
+    });
+
+    const labels = Object.keys(participants);
+    const datasets = labels.map((name, idx) => {
+        const p = participants[name];
+        const msg = messages.find(m => m.author === name);
+        let color = 'rgba(107, 114, 128, 0.6)';
+        if (msg && msg.role === '찬성') color = 'rgba(16, 185, 129, 0.6)';
+        if (msg && msg.role === '반대') color = 'rgba(239, 68, 68, 0.6)';
+
+        return {
+            label: name,
+            data: [
+                p.messageCount,              // 발언 횟수
+                p.responses,                 // 응답 횟수
+                p.avgLength / 10             // 평균 발언 길이 (스케일 조정)
+            ],
+            backgroundColor: color,
+            borderColor: color.replace('0.6', '1'),
+            borderWidth: 2
+        };
+    });
+
+    // 기존 차트 파괴
+    if (interactionChartInstance) {
+        interactionChartInstance.destroy();
+    }
+
+    // 차트 생성
+    interactionChartInstance = new Chart(canvas, {
+        type: 'radar',
+        data: {
+            labels: ['발언 횟수', '응답 횟수', '평균 발언 길이'],
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 5
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 15,
+                        font: {
+                            size: 12
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// 3. 토론 흐름 트렌드 면적 그래프
+function renderTrendChart(messages) {
+    const canvas = document.getElementById('trendChart');
+    if (!canvas) return;
+
+    // 시간 순서대로 찬성/반대 메시지 누적 카운트
+    const prosCount = [];
+    const consCount = [];
+    const labels = [];
+
+    let prosTotal = 0;
+    let consTotal = 0;
+
+    messages.forEach((msg, index) => {
+        if (msg.role === '찬성') {
+            prosTotal++;
+        } else if (msg.role === '반대') {
+            consTotal++;
+        }
+
+        prosCount.push(prosTotal);
+        consCount.push(consTotal);
+        labels.push(`#${index + 1}`);
+    });
+
+    // 기존 차트 파괴
+    if (trendChartInstance) {
+        trendChartInstance.destroy();
+    }
+
+    // 차트 생성
+    trendChartInstance = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: '찬성 발언',
+                    data: prosCount,
+                    backgroundColor: 'rgba(16, 185, 129, 0.3)',
+                    borderColor: 'rgba(16, 185, 129, 1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                },
+                {
+                    label: '반대 발언',
+                    data: consCount,
+                    backgroundColor: 'rgba(239, 68, 68, 0.3)',
+                    borderColor: 'rgba(239, 68, 68, 1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: '메시지 순서'
+                    },
+                    ticks: {
+                        maxTicksLimit: 10
+                    }
+                },
+                y: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: '누적 발언 수'
+                    },
+                    beginAtZero: true
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 15,
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            },
+            interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
+            }
+        }
     });
 }
 
@@ -1293,39 +1758,118 @@ if (startVerdictBtn) {
 
 // 판결문 결과 렌더링
 function renderVerdictResult(result) {
-    // 판결문 번호 (날짜 기반)
-    const now = new Date();
-    const verdictNum = `${now.getFullYear()}AI${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${currentDiscussionId}`;
-    document.getElementById('verdictNumber').textContent = `사건번호: ${verdictNum}`;
-
-    // 사건 개요
-    if (result.case_summary) {
-        document.getElementById('verdictCase').textContent = result.case_summary;
+    // 서론 - 토론 개요
+    if (result.overview) {
+        document.getElementById('verdictOverview').textContent = result.overview;
     }
 
-    // 찬성 측 주장
-    if (result.pros_claim) {
-        document.getElementById('verdictProsClaim').textContent = result.pros_claim;
+    // 서론 - 논의 배경
+    if (result.background) {
+        document.getElementById('verdictBackground').textContent = result.background;
     }
 
-    // 반대 측 주장
-    if (result.cons_claim) {
-        document.getElementById('verdictConsClaim').textContent = result.cons_claim;
+    // 서론 - 주요 쟁점
+    if (result.issues && Array.isArray(result.issues)) {
+        const issuesContainer = document.getElementById('verdictIssues');
+        issuesContainer.innerHTML = '';
+        result.issues.forEach((issue, index) => {
+            const issueP = document.createElement('p');
+            issueP.textContent = `${index + 1}. ${issue}`;
+            issueP.style.marginBottom = '0.5rem';
+            issuesContainer.appendChild(issueP);
+        });
     }
 
-    // 판단
-    if (result.judgment) {
-        document.getElementById('verdictJudgment').textContent = result.judgment;
+    // 본론 - 쟁점별 분석
+    if (result.main_body && Array.isArray(result.main_body)) {
+        const mainBodyContainer = document.getElementById('verdictMainBody');
+        mainBodyContainer.innerHTML = '';
+
+        result.main_body.forEach((issueData, index) => {
+            // 쟁점 섹션
+            const issueSection = document.createElement('div');
+            issueSection.className = 'verdict-section';
+
+            // 쟁점 제목
+            const issueTitle = document.createElement('h4');
+            issueTitle.textContent = issueData.issue_title;
+            issueSection.appendChild(issueTitle);
+
+            // 주요 주장 요약
+            if (issueData.arguments_summary) {
+                const summaryTitle = document.createElement('h5');
+                summaryTitle.textContent = '주요 주장 요약';
+                summaryTitle.style.fontSize = '1rem';
+                summaryTitle.style.fontWeight = '600';
+                summaryTitle.style.color = '#6b7280';
+                summaryTitle.style.marginTop = '1rem';
+                summaryTitle.style.marginBottom = '0.75rem';
+                issueSection.appendChild(summaryTitle);
+
+                // 찬성 측
+                if (issueData.arguments_summary.pros) {
+                    const prosP = document.createElement('p');
+                    prosP.innerHTML = `<strong>찬성 측:</strong> ${issueData.arguments_summary.pros}`;
+                    prosP.style.marginBottom = '0.75rem';
+                    issueSection.appendChild(prosP);
+                }
+
+                // 반대 측
+                if (issueData.arguments_summary.cons) {
+                    const consP = document.createElement('p');
+                    consP.innerHTML = `<strong>반대 측:</strong> ${issueData.arguments_summary.cons}`;
+                    consP.style.marginBottom = '0.75rem';
+                    issueSection.appendChild(consP);
+                }
+
+                // AI 조언자
+                if (issueData.arguments_summary.ai) {
+                    const aiP = document.createElement('p');
+                    aiP.innerHTML = `<strong>AI 조언자:</strong> ${issueData.arguments_summary.ai}`;
+                    aiP.style.marginBottom = '0.75rem';
+                    issueSection.appendChild(aiP);
+                }
+            }
+
+            // 논거 및 반박 분석
+            if (issueData.analysis) {
+                const analysisTitle = document.createElement('h5');
+                analysisTitle.textContent = '논거 및 반박 분석';
+                analysisTitle.style.fontSize = '1rem';
+                analysisTitle.style.fontWeight = '600';
+                analysisTitle.style.color = '#6b7280';
+                analysisTitle.style.marginTop = '1rem';
+                analysisTitle.style.marginBottom = '0.75rem';
+                issueSection.appendChild(analysisTitle);
+
+                const analysisP = document.createElement('p');
+                analysisP.textContent = issueData.analysis;
+                issueSection.appendChild(analysisP);
+            }
+
+            mainBodyContainer.appendChild(issueSection);
+        });
     }
 
-    // 결론
-    if (result.conclusion) {
-        document.getElementById('verdictConclusion').textContent = result.conclusion;
+    // 특이점 및 인사이트
+    if (result.insights) {
+        document.getElementById('verdictInsights').textContent = result.insights;
     }
 
-    // 날짜
-    const dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일`;
-    document.getElementById('verdictDate').textContent = dateStr;
+    // 결론 - 토론 결과 요약
+    if (result.summary) {
+        document.getElementById('verdictSummary').textContent = result.summary;
+    }
+
+    // 결론 - 미해결 과제 및 제언
+    if (result.recommendations) {
+        document.getElementById('verdictRecommendations').textContent = result.recommendations;
+    }
+
+    // 결론 - 토론의 의의
+    if (result.significance) {
+        document.getElementById('verdictSignificance').textContent = result.significance;
+    }
 }
 
 // 다시 작성하기 버튼
