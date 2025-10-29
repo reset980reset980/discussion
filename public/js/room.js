@@ -120,6 +120,62 @@ function initializeEventListeners() {
         }
     });
 
+    // 음성 입력 기능
+    const voiceBtn = document.getElementById('voiceBtn');
+    const voiceIcon = document.getElementById('voiceIcon');
+    let recognition = null;
+    let isRecording = false;
+
+    // Web Speech API 지원 확인
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        recognition.lang = 'ko-KR';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        recognition.onstart = () => {
+            isRecording = true;
+            voiceBtn.classList.add('recording');
+            voiceIcon.textContent = '⏹️';
+        };
+
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            messageInput.value = transcript;
+            messageInput.style.height = 'auto';
+            messageInput.style.height = messageInput.scrollHeight + 'px';
+        };
+
+        recognition.onerror = (event) => {
+            console.error('음성 인식 오류:', event.error);
+            if (event.error !== 'no-speech' && event.error !== 'aborted') {
+                alert('음성 인식 중 오류가 발생했습니다: ' + event.error);
+            }
+        };
+
+        recognition.onend = () => {
+            isRecording = false;
+            voiceBtn.classList.remove('recording');
+            voiceIcon.textContent = '🎤';
+        };
+
+        voiceBtn.addEventListener('click', () => {
+            if (isRecording) {
+                recognition.stop();
+            } else {
+                recognition.start();
+            }
+        });
+    } else {
+        // Web Speech API 미지원 브라우저
+        voiceBtn.addEventListener('click', () => {
+            alert('이 브라우저는 음성 입력을 지원하지 않습니다.\nChrome, Edge 또는 Safari를 사용해주세요.');
+        });
+        voiceBtn.style.opacity = '0.5';
+        voiceBtn.title = '음성 입력 미지원';
+    }
+
     // 텍스트 영역 자동 높이 조절
     messageInput.addEventListener('input', () => {
         messageInput.style.height = 'auto';
@@ -203,11 +259,11 @@ async function loadDiscussionInfoForJoin() {
 
                 roleRadioGroup.innerHTML = `
                     <div class="join-modal-radio-item">
-                        <input type="radio" id="roleTeam1" name="userRole" value="team1" checked>
+                        <input type="radio" id="roleTeam1" name="userRole" value="${team1Name}" checked>
                         <label for="roleTeam1">${team1Name}</label>
                     </div>
                     <div class="join-modal-radio-item">
-                        <input type="radio" id="roleTeam2" name="userRole" value="team2">
+                        <input type="radio" id="roleTeam2" name="userRole" value="${team2Name}">
                         <label for="roleTeam2">${team2Name}</label>
                     </div>
                 `;
@@ -408,6 +464,12 @@ function initializeSocket() {
         });
     });
 
+    // AI 질문 타이머 동기화 (서버에서 전송)
+    socket.on('ai-timer-sync', (data) => {
+        console.log(`⏱️ AI 질문 타이머 동기화: ${data.remainingSeconds}초 남음, 활성화: ${data.isReady}`);
+        startInitialTimer(data.remainingSeconds, data.isReady);
+    });
+
     // 새 메시지 수신
     socket.on('new-message', (data) => {
         addMessageToUI(data);
@@ -469,26 +531,31 @@ function addMessageToUI(data) {
         messageEl.className = 'system-message';
         messageEl.innerHTML = `<span>${escapeHtml(data.message)}</span>`;
     } else if (data.is_ai || data.message_type === 'ai-question') {
-        // AI 질문 메시지
-        messageEl.className = 'message ai-message';
+        // AI 질문 메시지 (우아한 라벤더 스타일)
+        messageEl.className = 'message message-ai';
         messageEl.innerHTML = `
-            <div class="message-avatar">🤖</div>
+            <div class="message-avatar">
+                <span style="font-size: 20px; color: white;">🤖</span>
+            </div>
             <div class="message-content">
                 <div class="message-header">
-                    <span class="message-author">${data.author}</span>
-                    <span class="message-role">${data.role}</span>
-                    <span class="message-time">${time}</span>
+                    <span class="message-author">${escapeHtml(data.author)} <span class="message-role">[AI]</span></span>
                 </div>
                 <div class="message-text">${escapeHtml(data.message)}</div>
+                <div class="message-time">${time}</div>
             </div>
         `;
     } else {
-        // 일반 메시지 (아바타 이미지 + 이름 [역할] 형식)
+        // 일반 메시지 - 카카오톡 스타일 (내 메시지 우측, 타인 메시지 좌측)
         const avatarImageUrl = data.avatar_image_url || '/images/avatars/avatar1.png';
         const avatarColor = data.avatar_color || '#9333ea';
         const roleClass = getRoleClass(data.role);
 
-        messageEl.className = 'message';
+        // 현재 사용자의 메시지인지 확인
+        const isOwnMessage = currentUser && data.author === currentUser.name;
+        const messageClass = isOwnMessage ? 'message message-own' : 'message message-other';
+
+        messageEl.className = messageClass;
         messageEl.innerHTML = `
             <div class="message-avatar" style="background-color: ${avatarColor};">
                 <img src="${avatarImageUrl}" alt="avatar">
@@ -496,9 +563,9 @@ function addMessageToUI(data) {
             <div class="message-content">
                 <div class="message-header">
                     <span class="message-author">${escapeHtml(data.author)} <span class="message-role ${roleClass}">[${escapeHtml(data.role)}]</span></span>
-                    <span class="message-time">${time}</span>
                 </div>
                 <div class="message-text">${escapeHtml(data.message)}</div>
+                <div class="message-time">${time}</div>
             </div>
         `;
     }
@@ -599,19 +666,42 @@ async function loadAnalysis() {
 let initialTimer = null;
 let isAIQuestionReady = false;
 
-// 최초 5분 타이머 - AI 질문 버튼 활성화 대기
-function startInitialTimer() {
-    let timeLeft = 300; // 5분 = 300초
+// AI 질문 관리 변수
+let storedAIQuestions = [];
+let currentQuestionIndex = 0;
+
+// 최초 5분 타이머 - AI 질문 버튼 활성화 대기 (서버 동기화)
+function startInitialTimer(remainingSeconds, isReady) {
     const btnQuestions = document.getElementById('btn-questions');
     const timerBadge = document.getElementById('aiQuestionTimer');
 
-    // 타이머 뱃지 표시
-    timerBadge.style.display = 'block';
+    // 이미 활성화된 경우
+    if (isReady) {
+        isAIQuestionReady = true;
+        timerBadge.style.display = 'none';
+        btnQuestions.disabled = false;
+        btnQuestions.style.opacity = '1';
+        btnQuestions.style.cursor = 'pointer';
+        console.log('✅ AI 질문 기능 활성화됨 (이미 5분 경과)');
+        return;
+    }
 
-    // 버튼 비활성화
+    // 타이머 진행 중
+    let timeLeft = remainingSeconds;
+    timerBadge.style.display = 'block';
     btnQuestions.disabled = true;
     btnQuestions.style.opacity = '0.5';
     btnQuestions.style.cursor = 'not-allowed';
+
+    // 초기 표시
+    const minutes = Math.floor(timeLeft / 60);
+    const seconds = timeLeft % 60;
+    timerBadge.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+    // 기존 타이머가 있으면 제거
+    if (initialTimer) {
+        clearInterval(initialTimer);
+    }
 
     initialTimer = setInterval(() => {
         timeLeft--;
@@ -636,7 +726,7 @@ function startInitialTimer() {
     }, 1000);
 }
 
-// AI 질문 생성 및 채팅창 전송
+// AI 질문 생성 및 채팅창 전송 (한 번에 하나씩)
 async function generateAndSendQuestion() {
     if (!isAIQuestionReady) {
         alert('토론이 충분히 진행된 후 AI 질문을 생성할 수 있습니다.');
@@ -647,7 +737,38 @@ async function generateAndSendQuestion() {
     const originalText = btnQuestions.querySelector('.btn-label').textContent;
 
     try {
-        // 버튼 로딩 상태
+        // 저장된 질문이 있으면 다음 질문 전송
+        if (storedAIQuestions.length > 0 && currentQuestionIndex < storedAIQuestions.length) {
+            const q = storedAIQuestions[currentQuestionIndex];
+
+            console.log(`📤 AI 질문 ${currentQuestionIndex + 1}/${storedAIQuestions.length} 전송:`, q);
+
+            // Socket.io로 AI 질문 메시지 전송
+            if (socket && socket.connected) {
+                socket.emit('send-ai-question', {
+                    discussionId: currentDiscussionId,
+                    question: q.question,
+                    category: q.category,
+                    questionNumber: currentQuestionIndex + 1
+                });
+            }
+
+            currentQuestionIndex++;
+
+            // 모든 질문을 다 보냈으면 초기화
+            if (currentQuestionIndex >= storedAIQuestions.length) {
+                console.log('✅ 모든 AI 질문 전송 완료');
+                storedAIQuestions = [];
+                currentQuestionIndex = 0;
+            }
+
+            // 서버가 ai-timer-sync 이벤트를 브로드캐스트하므로 여기서는 타이머 재시작 불필요
+            console.log('⏱️ 서버에서 타이머 동기화 대기 중...');
+
+            return;
+        }
+
+        // 새로운 질문 생성
         btnQuestions.disabled = true;
         btnQuestions.querySelector('.btn-label').textContent = '생성 중...';
 
@@ -660,16 +781,26 @@ async function generateAndSendQuestion() {
         if (response.ok && data.success) {
             console.log('✨ AI 질문 생성 완료:', data.questions);
 
-            // Socket.io로 AI 질문 메시지 전송 요청
-            if (socket && socket.connected) {
-                data.questions.forEach((q, index) => {
+            // 질문 저장
+            storedAIQuestions = data.questions;
+            currentQuestionIndex = 0;
+
+            // 첫 번째 질문 전송
+            if (storedAIQuestions.length > 0) {
+                const firstQuestion = storedAIQuestions[0];
+
+                if (socket && socket.connected) {
                     socket.emit('send-ai-question', {
                         discussionId: currentDiscussionId,
-                        question: q.question,
-                        category: q.category,
-                        questionNumber: index + 1
+                        question: firstQuestion.question,
+                        category: firstQuestion.category,
+                        questionNumber: 1
                     });
-                });
+                }
+
+                currentQuestionIndex = 1;
+                console.log(`📤 AI 질문 1/${storedAIQuestions.length} 전송 완료`);
+                console.log('⏱️ 서버에서 타이머 동기화 대기 중...');
             }
 
             // 버튼 복원
@@ -778,4 +909,4 @@ window.addEventListener('beforeunload', () => {
 // 전역 함수
 window.closeShareModal = closeShareModal;
 window.copyUrl = copyUrl;
-window.generateQuestions = generateQuestions;
+window.generateQuestions = generateAndSendQuestion;
