@@ -922,6 +922,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         // 클릭한 탭 활성화
         btn.classList.add('active');
         document.getElementById('tab-' + targetTab).classList.add('active');
+
+        // 흐름 시각화 탭이 열릴 때 렌더링
+        if (targetTab === 'flow') {
+            setTimeout(() => renderFlowVisualization(), 100);
+        }
     });
 });
 
@@ -1227,17 +1232,6 @@ function renderFlowVisualization() {
         flowTimeline.appendChild(flowItem);
     });
 }
-
-// 탭 전환 시 흐름 시각화 렌더링
-document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const targetTab = btn.dataset.tab;
-        if (targetTab === 'flow') {
-            // 흐름 시각화 탭이 열릴 때 렌더링
-            setTimeout(() => renderFlowVisualization(), 100);
-        }
-    });
-});
 
 // ========================================== AI 판결문 탭 ==========================================
 
