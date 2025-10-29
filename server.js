@@ -634,16 +634,61 @@ app.use((error, req, res, next) => {
 // Socket.io 실시간 통신
 // ==========================================
 
-// 랜덤 이모지 아바타 목록
-const emojiAvatars = [
-    '🐤', '🐦', '🐧', '🐥', '🦆', '🦅', '🦉', '🦜',
-    '😊', '😄', '😎', '🤓', '😇', '🥳', '🤗', '🙂',
-    '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸',
-    '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻‍❄️', '🐵'
+// 아바타 이미지 URL 목록 (로컬 이미지)
+const avatarImages = [
+    '/images/avatars/avatar1.png',
+    '/images/avatars/avatar2.png',
+    '/images/avatars/avatar3.png',
+    '/images/avatars/avatar4.png',
+    '/images/avatars/avatar5.png',
+    '/images/avatars/avatar6.png',
+    '/images/avatars/avatar7.png',
+    '/images/avatars/avatar8.png',
+    '/images/avatars/avatar9.png',
+    '/images/avatars/avatar10.png',
+    '/images/avatars/avatar11.png',
+    '/images/avatars/avatar12.png',
+    '/images/avatars/avatar13.png',
+    '/images/avatars/avatar14.png',
+    '/images/avatars/avatar15.png',
+    '/images/avatars/avatar16.png',
+    '/images/avatars/avatar17.png',
+    '/images/avatars/avatar18.png',
+    '/images/avatars/avatar19.png',
+    '/images/avatars/avatar20.png',
+    '/images/avatars/avatar21.png',
+    '/images/avatars/avatar22.png',
+    '/images/avatars/avatar23.png',
+    '/images/avatars/avatar24.png',
+    '/images/avatars/avatar25.png',
+    '/images/avatars/avatar26.png',
+    '/images/avatars/avatar27.png',
+    '/images/avatars/avatar28.png',
 ];
 
-function getRandomEmoji() {
-    return emojiAvatars[Math.floor(Math.random() * emojiAvatars.length)];
+// 아바타 배경색 목록 (원형 배경에 사용)
+const avatarColors = [
+    '#9333ea', // 보라색
+    '#3b82f6', // 파란색
+    '#10b981', // 녹색
+    '#f59e0b', // 주황색
+    '#ef4444', // 빨간색
+    '#ec4899', // 핑크색
+    '#6366f1', // 인디고
+    '#8b5cf6', // 바이올렛
+    '#14b8a6', // 청록색
+    '#f97316', // 오렌지
+    '#84cc16', // 라임
+    '#06b6d4', // 시안
+    '#a855f7', // 자주색
+    '#f43f5e', // 로즈
+    '#0ea5e9', // 하늘색
+];
+
+function getRandomAvatar() {
+    const imageUrl = avatarImages[Math.floor(Math.random() * avatarImages.length)];
+    const color = avatarColors[Math.floor(Math.random() * avatarColors.length)];
+    return { imageUrl, color };
 }
 
 io.on('connection', (socket) => {
@@ -692,13 +737,13 @@ io.on('connection', (socket) => {
                     );
                     participantId = existing[0].id;
                 } else {
-                    // 새로운 참여자 추가 (랜덤 이모지 할당)
-                    const randomEmoji = getRandomEmoji();
+                    // 새로운 참여자 추가 (랜덤 아바타 할당)
+                    const randomAvatar = getRandomAvatar();
                     const result = await query(
-                        `INSERT INTO participants (discussion_id, user_name, user_role, socket_id, is_online, emoji_avatar)
-                         VALUES ($1, $2, $3, $4, true, $5)
+                        `INSERT INTO participants (discussion_id, user_name, user_role, socket_id, is_online, avatar_image_url, avatar_color)
+                         VALUES ($1, $2, $3, $4, true, $5, $6)
                          RETURNING id`,
-                        [discussionId, userName, actualRole, socket.id, randomEmoji]
+                        [discussionId, userName, actualRole, socket.id, randomAvatar.imageUrl, randomAvatar.color]
                     );
                     participantId = result[0].id;
                 }
@@ -706,18 +751,18 @@ io.on('connection', (socket) => {
                 socket.participantId = participantId;
                 socket.discussionId = discussionId;
 
-                // 참여자 목록 조회 (이모지 포함)
+                // 참여자 목록 조회 (아바타 포함)
                 const participants = await query(
-                    'SELECT id, user_name, user_role, is_online, emoji_avatar FROM participants WHERE discussion_id = $1 AND is_online = true',
+                    'SELECT id, user_name, user_role, is_online, avatar_image_url, avatar_color FROM participants WHERE discussion_id = $1 AND is_online = true',
                     [discussionId]
                 );
 
                 // 방의 모든 사용자에게 참여자 목록 업데이트 전송
                 io.to(`discussion-${discussionId}`).emit('participants-update', participants);
 
-                // 기존 메시지 로드 (이모지 포함)
+                // 기존 메시지 로드 (아바타 포함)
                 const messages = await query(
-                    `SELECT m.*, p.emoji_avatar
+                    `SELECT m.*, p.avatar_image_url, p.avatar_color
                      FROM messages m
                      LEFT JOIN participants p ON m.participant_id = p.id
                      WHERE m.discussion_id = $1
@@ -755,12 +800,13 @@ io.on('connection', (socket) => {
             const { discussionId, message, userName, userRole } = data;
 
             if (!global.discussionsStore) {
-                // 참여자 이모지 조회
+                // 참여자 아바타 조회
                 const participant = await query(
-                    'SELECT emoji_avatar FROM participants WHERE id = $1',
+                    'SELECT avatar_image_url, avatar_color FROM participants WHERE id = $1',
                     [socket.participantId]
                 );
-                const emojiAvatar = participant[0]?.emoji_avatar || '😊';
+                const avatarImageUrl = participant[0]?.avatar_image_url || '/images/avatars/avatar1.png';
+                const avatarColor = participant[0]?.avatar_color || '#9333ea';
 
                 // 데이터베이스에 메시지 저장
                 const result = await query(
@@ -770,7 +816,7 @@ io.on('connection', (socket) => {
                     [discussionId, socket.participantId || null, userName, userRole, message]
                 );
 
-                // 방의 모든 사용자에게 메시지 전송 (이모지 포함)
+                // 방의 모든 사용자에게 메시지 전송 (아바타 포함)
                 const messageData = {
                     id: result[0].id,
                     author: userName,
@@ -779,7 +825,8 @@ io.on('connection', (socket) => {
                     timestamp: result[0].created_at,
                     is_ai: false,
                     message_type: 'chat',
-                    emoji_avatar: emojiAvatar
+                    avatar_image_url: avatarImageUrl,
+                    avatar_color: avatarColor
                 };
 
                 io.to(`discussion-${discussionId}`).emit('new-message', messageData);

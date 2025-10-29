@@ -483,13 +483,16 @@ function addMessageToUI(data) {
             </div>
         `;
     } else {
-        // 일반 메시지 (이모지 + 이름 [역할] 형식)
-        const emoji = data.emoji_avatar || '😊';
+        // 일반 메시지 (아바타 이미지 + 이름 [역할] 형식)
+        const avatarImageUrl = data.avatar_image_url || '/images/avatars/avatar1.png';
+        const avatarColor = data.avatar_color || '#9333ea';
         const roleClass = getRoleClass(data.role);
 
         messageEl.className = 'message';
         messageEl.innerHTML = `
-            <div class="message-avatar">${emoji}</div>
+            <div class="message-avatar" style="background-color: ${avatarColor};">
+                <img src="${avatarImageUrl}" alt="avatar">
+            </div>
             <div class="message-content">
                 <div class="message-header">
                     <span class="message-author">${escapeHtml(data.author)} <span class="message-role ${roleClass}">[${escapeHtml(data.role)}]</span></span>
@@ -540,13 +543,16 @@ function updateParticipantsList(participants) {
         return;
     }
 
-    // 참여자 목록 HTML 생성 (이모지 + 이름 [역할] 형식)
+    // 참여자 목록 HTML 생성 (아바타 이미지 + 이름 [역할] 형식)
     participantsList.innerHTML = participants.map(p => {
-        const emoji = p.emoji_avatar || '😊';
+        const avatarImageUrl = p.avatar_image_url || '/images/avatars/avatar1.png';
+        const avatarColor = p.avatar_color || '#9333ea';
         const roleClass = getRoleClass(p.user_role);
         return `
             <div class="participant-item">
-                <div class="participant-avatar">${emoji}</div>
+                <div class="participant-avatar" style="background-color: ${avatarColor};">
+                    <img src="${avatarImageUrl}" alt="avatar">
+                </div>
                 <div class="participant-info">
                     <div class="participant-name">${p.user_name}${p.user_name === currentUser.name ? ' (나)' : ''} <span class="participant-role ${roleClass}">[${p.user_role || '참여자'}]</span></div>
                 </div>
