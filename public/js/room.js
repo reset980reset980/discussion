@@ -650,14 +650,8 @@ function updateParticipantsList(participants) {
 // AI 분석 기능
 // ==========================================
 async function loadAnalysis() {
-    console.log('AI 분석 로드 중...');
-
-    const summaryBox = document.getElementById('summaryBox');
-    summaryBox.innerHTML = `
-        <p class="empty-state">충분한 대화가 진행된 후 AI 분석이 생성됩니다.</p>
-    `;
-
-    // TODO: 실제 분석 데이터 로드
+    console.log('AI 분석 패널 로드됨');
+    // 분석 패널이 열렸을 때 필요한 초기화가 있다면 여기에 추가
 }
 
 // ==========================================
@@ -981,7 +975,7 @@ if (startAnalysisBtn) {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    discussion_id: discussionId,
+                    discussion_id: currentDiscussionId,
                     messages: messages
                 })
             });
@@ -1118,34 +1112,313 @@ if (downloadPdfBtn2) {
         }
 
         try {
-            const response = await fetch('/api/generate-pdf', {
+            console.log('📄 PDF 생성 시작...');
+
+            // 분석 결과 패널 가져오기
+            const analysisResultView = document.getElementById('analysis-result-view');
+            if (!analysisResultView || analysisResultView.style.display === 'none') {
+                alert('분석 결과가 표시되지 않았습니다.');
+                return;
+            }
+
+            // html2canvas로 캡처
+            console.log('📸 화면 캡처 중...');
+            const canvas = await html2canvas(analysisResultView, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            });
+
+            console.log('🖼️ 캔버스 생성 완료:', canvas.width, 'x', canvas.height);
+
+            // jsPDF 인스턴스 생성
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            // A4 크기 (mm)
+            const pdfWidth = 210;
+            const pdfHeight = 297;
+
+            // 캔버스를 이미지로 변환
+            const imgData = canvas.toDataURL('image/png');
+
+            // 이미지 크기 계산 (비율 유지)
+            const imgWidth = pdfWidth - 20; // 좌우 여백 10mm씩
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+            // 여러 페이지로 나누기
+            let heightLeft = imgHeight;
+            let position = 10; // 상단 여백
+
+            // 첫 페이지
+            pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+            heightLeft -= (pdfHeight - 20); // 페이지 높이에서 여백 제외
+
+            // 추가 페이지 생성
+            while (heightLeft > 0) {
+                position = heightLeft - imgHeight + 10;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+                heightLeft -= (pdfHeight - 20);
+            }
+
+            // PDF 다운로드
+            const filename = 'discussion-analysis-' + currentDiscussionId + '.pdf';
+            pdf.save(filename);
+
+            console.log('✅ PDF 다운로드 완료:', filename);
+
+        } catch (error) {
+            console.error('PDF 다운로드 오류:', error);
+            alert('PDF 다운로드 중 오류가 발생했습니다: ' + error.message);
+        }
+    });
+}
+
+// ========================================== 흐름 시각화 탭 ==========================================
+
+// 흐름 시각화 렌더링
+function renderFlowVisualization() {
+    const flowTimeline = document.getElementById('flow-timeline');
+    if (!flowTimeline) return;
+
+    const messages = collectChatMessages();
+
+    if (messages.length === 0) {
+        flowTimeline.innerHTML = '<div class="empty-state"><p>아직 토론 메시지가 없습니다.</p></div>';
+        return;
+    }
+
+    flowTimeline.innerHTML = '';
+
+    messages.forEach((msg, index) => {
+        const flowItem = document.createElement('div');
+        flowItem.className = 'flow-item';
+
+        // 찬성/반대에 따라 왼쪽/오른쪽 배치
+        if (msg.role === '찬성') {
+            flowItem.classList.add('flow-item-pros');
+        } else if (msg.role === '반대') {
+            flowItem.classList.add('flow-item-cons');
+        } else {
+            flowItem.classList.add('flow-item-neutral');
+        }
+
+        const roleClass = msg.role === '찬성' ? 'pros-badge' :
+                         msg.role === '반대' ? 'cons-badge' : 'neutral-badge';
+
+        flowItem.innerHTML = `
+            <div class="flow-item-marker"></div>
+            <div class="flow-item-content">
+                <div class="flow-item-header">
+                    <span class="flow-item-author">${msg.author}</span>
+                    <span class="flow-item-role ${roleClass}">[${msg.role}]</span>
+                </div>
+                <div class="flow-item-message">${msg.message}</div>
+                <div class="flow-item-number">#${index + 1}</div>
+            </div>
+        `;
+
+        flowTimeline.appendChild(flowItem);
+    });
+}
+
+// 탭 전환 시 흐름 시각화 렌더링
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const targetTab = btn.dataset.tab;
+        if (targetTab === 'flow') {
+            // 흐름 시각화 탭이 열릴 때 렌더링
+            setTimeout(() => renderFlowVisualization(), 100);
+        }
+    });
+});
+
+// ========================================== AI 판결문 탭 ==========================================
+
+let verdictResult = null;
+
+// AI 판결문 생성 버튼
+const startVerdictBtn = document.getElementById('startVerdictBtn');
+if (startVerdictBtn) {
+    startVerdictBtn.addEventListener('click', async () => {
+        const messages = collectChatMessages();
+
+        // 최소 10개 메시지 체크
+        if (messages.length < 10) {
+            alert('AI 판결문을 생성하려면 최소 10개 이상의 메시지가 필요합니다.');
+            return;
+        }
+
+        // 뷰 전환: 시작 -> 로딩
+        document.getElementById('verdict-start-view').style.display = 'none';
+        document.getElementById('verdict-loading-view').style.display = 'block';
+
+        try {
+            // Gemini API 호출
+            const response = await fetch('/api/generate-verdict', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    discussion_id: discussionId,
-                    analysis: analysisResult
+                    discussion_id: currentDiscussionId,
+                    messages: messages
                 })
             });
 
             if (!response.ok) {
-                throw new Error('PDF 생성 실패');
+                throw new Error('판결문 생성 실패');
             }
 
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'discussion-analysis-' + discussionId + '.pdf';
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
+            const result = await response.json();
+            verdictResult = result;
+
+            // 결과 렌더링
+            renderVerdictResult(result);
+
+            // 뷰 전환: 로딩 -> 결과
+            document.getElementById('verdict-loading-view').style.display = 'none';
+            document.getElementById('verdict-result-view').style.display = 'block';
 
         } catch (error) {
-            console.error('PDF 다운로드 오류:', error);
-            alert('PDF 다운로드 중 오류가 발생했습니다.');
+            console.error('AI 판결문 생성 오류:', error);
+            alert('AI 판결문 생성 중 오류가 발생했습니다: ' + error.message);
+
+            // 뷰 전환: 로딩 -> 시작
+            document.getElementById('verdict-loading-view').style.display = 'none';
+            document.getElementById('verdict-start-view').style.display = 'block';
+        }
+    });
+}
+
+// 판결문 결과 렌더링
+function renderVerdictResult(result) {
+    // 판결문 번호 (날짜 기반)
+    const now = new Date();
+    const verdictNum = `${now.getFullYear()}AI${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${currentDiscussionId}`;
+    document.getElementById('verdictNumber').textContent = `사건번호: ${verdictNum}`;
+
+    // 사건 개요
+    if (result.case_summary) {
+        document.getElementById('verdictCase').textContent = result.case_summary;
+    }
+
+    // 찬성 측 주장
+    if (result.pros_claim) {
+        document.getElementById('verdictProsClaim').textContent = result.pros_claim;
+    }
+
+    // 반대 측 주장
+    if (result.cons_claim) {
+        document.getElementById('verdictConsClaim').textContent = result.cons_claim;
+    }
+
+    // 판단
+    if (result.judgment) {
+        document.getElementById('verdictJudgment').textContent = result.judgment;
+    }
+
+    // 결론
+    if (result.conclusion) {
+        document.getElementById('verdictConclusion').textContent = result.conclusion;
+    }
+
+    // 날짜
+    const dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일`;
+    document.getElementById('verdictDate').textContent = dateStr;
+}
+
+// 다시 작성하기 버튼
+const rewriteVerdictBtn = document.getElementById('rewriteVerdictBtn');
+if (rewriteVerdictBtn) {
+    rewriteVerdictBtn.addEventListener('click', () => {
+        // 뷰 초기화
+        document.getElementById('verdict-result-view').style.display = 'none';
+        document.getElementById('verdict-start-view').style.display = 'block';
+        verdictResult = null;
+    });
+}
+
+// 판결문 PDF 다운로드 버튼
+const downloadVerdictPdfBtn = document.getElementById('downloadVerdictPdfBtn');
+if (downloadVerdictPdfBtn) {
+    downloadVerdictPdfBtn.addEventListener('click', async () => {
+        if (!verdictResult) {
+            alert('판결문이 없습니다.');
+            return;
+        }
+
+        try {
+            console.log('📄 판결문 PDF 생성 시작...');
+
+            // 판결문 결과 패널 가져오기
+            const verdictResultView = document.getElementById('verdict-result-view');
+            if (!verdictResultView || verdictResultView.style.display === 'none') {
+                alert('판결문이 표시되지 않았습니다.');
+                return;
+            }
+
+            // html2canvas로 캡처
+            console.log('📸 화면 캡처 중...');
+            const canvas = await html2canvas(verdictResultView, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            });
+
+            console.log('🖼️ 캔버스 생성 완료:', canvas.width, 'x', canvas.height);
+
+            // jsPDF 인스턴스 생성
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            // A4 크기 (mm)
+            const pdfWidth = 210;
+            const pdfHeight = 297;
+
+            // 캔버스를 이미지로 변환
+            const imgData = canvas.toDataURL('image/png');
+
+            // 이미지 크기 계산 (비율 유지)
+            const imgWidth = pdfWidth - 20; // 좌우 여백 10mm씩
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+            // 여러 페이지로 나누기
+            let heightLeft = imgHeight;
+            let position = 10; // 상단 여백
+
+            // 첫 페이지
+            pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+            heightLeft -= (pdfHeight - 20); // 페이지 높이에서 여백 제외
+
+            // 추가 페이지 생성
+            while (heightLeft > 0) {
+                position = heightLeft - imgHeight + 10;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+                heightLeft -= (pdfHeight - 20);
+            }
+
+            // PDF 다운로드
+            const filename = 'discussion-verdict-' + currentDiscussionId + '.pdf';
+            pdf.save(filename);
+
+            console.log('✅ 판결문 PDF 다운로드 완료:', filename);
+
+        } catch (error) {
+            console.error('판결문 PDF 다운로드 오류:', error);
+            alert('판결문 PDF 다운로드 중 오류가 발생했습니다: ' + error.message);
         }
     });
 }

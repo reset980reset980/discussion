@@ -669,9 +669,13 @@ app.get('/api/discussions/:id/questions', async (req, res) => {
 // AI 토론 분석 API
 app.post('/api/analyze-discussion', async (req, res) => {
     try {
+        console.log('📊 AI 분석 요청 받음');
         const { discussion_id, messages } = req.body;
 
+        console.log('메시지 수:', messages ? messages.length : 0);
+
         if (!messages || messages.length < 5) {
+            console.log('❌ 메시지 부족:', messages ? messages.length : 0);
             return res.status(400).json({ error: '최소 5개 이상의 메시지가 필요합니다.' });
         }
 
@@ -681,8 +685,16 @@ app.post('/api/analyze-discussion', async (req, res) => {
             return res.status(500).json({ error: 'Gemini API 키가 설정되지 않았습니다.' });
         }
 
+        console.log('✅ Gemini API 키 확인됨');
+
         // 메시지를 텍스트로 변환
-        const messagesText = messages.map(m => `[${m.role}] ${m.author}: ${m.message}`).join('\n');
+        console.log('메시지 변환 시작...');
+        const messagesText = messages.map(m => {
+            console.log('메시지:', m);
+            return `[${m.role}] ${m.author}: ${m.message}`;
+        }).join('\n');
+
+        console.log('변환된 메시지 텍스트 길이:', messagesText.length);
 
         // Gemini 프롬프트
         const prompt = `다음은 찬반 토론의 대화 내용입니다. 이 토론을 분석하여 JSON 형식으로 결과를 제공해주세요.
@@ -749,7 +761,7 @@ ${messagesText}
                         temperature: 0.7,
                         topK: 40,
                         topP: 0.95,
-                        maxOutputTokens: 2048
+                        maxOutputTokens: 4096
                     }
                 })
             }
@@ -806,18 +818,433 @@ ${messagesText}
     }
 });
 
-// PDF 생성 API (임시 구현)
+// PDF 생성 API (Puppeteer 사용)
 app.post('/api/generate-pdf', async (req, res) => {
     try {
+        console.log('📄 PDF 생성 요청 받음');
         const { discussion_id, analysis } = req.body;
 
-        // TODO: jsPDF를 사용한 PDF 생성
-        // 현재는 간단한 텍스트 응답
-        res.status(501).json({ error: 'PDF 생성 기능은 준비 중입니다.' });
+        if (!analysis) {
+            return res.status(400).json({ error: '분석 결과가 없습니다.' });
+        }
+
+        const puppeteer = require('puppeteer');
+
+        // HTML 조각 생성 함수들
+        function generateTeamAnalysis(analysis) {
+            if (!analysis.team_analysis) return '';
+
+            let prosHtml = '';
+            if (analysis.team_analysis.pros) {
+                prosHtml = `
+            <div class="team-box pros">
+                <div class="team-name">👍 찬성팀</div>
+                <div class="team-item">
+                    <div class="team-label">전략 분석</div>
+                    <div class="team-content">${analysis.team_analysis.pros.strategy || 'N/A'}</div>
+                </div>
+                <div class="team-item">
+                    <div class="team-label">핵심 논거</div>
+                    <div class="team-content">${analysis.team_analysis.pros.arguments || 'N/A'}</div>
+                </div>
+            </div>`;
+            }
+
+            let consHtml = '';
+            if (analysis.team_analysis.cons) {
+                consHtml = `
+            <div class="team-box cons">
+                <div class="team-name">👎 반대팀</div>
+                <div class="team-item">
+                    <div class="team-label">전략 분석</div>
+                    <div class="team-content">${analysis.team_analysis.cons.strategy || 'N/A'}</div>
+                </div>
+                <div class="team-item">
+                    <div class="team-label">핵심 논거</div>
+                    <div class="team-content">${analysis.team_analysis.cons.arguments || 'N/A'}</div>
+                </div>
+            </div>`;
+            }
+
+            return `
+    <div class="section">
+        <h2 class="section-title">👥 팀별 종합 분석</h2>
+        <div class="team-container">
+            ${prosHtml}
+            ${consHtml}
+        </div>
+    </div>`;
+        }
+
+        function generateKeyStatements(analysis) {
+            if (!analysis.key_statements || analysis.key_statements.length === 0) return '';
+
+            const statementsHtml = analysis.key_statements.map(statement => {
+                const team = statement.team === 'pros' ? '찬성' : '반대';
+                const emoji = statement.team === 'pros' ? '👍' : '👎';
+                return `
+        <div class="statement-box ${statement.team}">
+            <div class="statement-team ${statement.team}">
+                ${emoji} ${team}
+            </div>
+            <div class="statement-text">
+                ${statement.statement || '발언 내용 없음'}
+            </div>
+        </div>`;
+            }).join('');
+
+            return `
+    <div class="section">
+        <h2 class="section-title">💬 주요 발언</h2>
+        ${statementsHtml}
+    </div>`;
+        }
+
+        function generateParticipantAnalysis(analysis) {
+            if (!analysis.participant_analysis || analysis.participant_analysis.length === 0) return '';
+
+            const participantsHtml = analysis.participant_analysis.map(participant => {
+                const team = participant.team === 'pros' ? '찬성' : '반대';
+                const emoji = participant.team === 'pros' ? '👍' : '👎';
+
+                let contributionHtml = '';
+                if (participant.key_contribution) {
+                    contributionHtml = `
+            <div class="participant-contribution">
+                <div class="contribution-label">핵심 기여</div>
+                <div class="contribution-text">"${participant.key_contribution}"</div>
+            </div>`;
+                }
+
+                return `
+        <div class="participant-box">
+            <div class="participant-header">
+                <div class="participant-name">${participant.name}</div>
+                <div class="participant-team ${participant.team}">
+                    ${emoji} ${team}
+                </div>
+            </div>
+            <div class="participant-analysis">
+                ${participant.analysis || '분석 내용 없음'}
+            </div>
+            ${contributionHtml}
+        </div>`;
+            }).join('');
+
+            return `
+    <div class="section">
+        <h2 class="section-title">🎯 참여자 개별 분석</h2>
+        ${participantsHtml}
+    </div>`;
+        }
+
+        // HTML 템플릿 생성
+        const htmlContent = `
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>토론 분석 리포트</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif;
+            line-height: 1.6;
+            padding: 40px;
+            color: #333;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #4a90e2;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+
+        .section {
+            margin-bottom: 40px;
+            page-break-inside: avoid;
+        }
+
+        .section-title {
+            font-size: 24px;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .verdict-box {
+            background: linear-gradient(135deg, #ffd93d 0%, #ffb800 100%);
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .verdict-winner {
+            font-size: 28px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .verdict-text {
+            font-size: 16px;
+            color: #34495e;
+            line-height: 1.8;
+        }
+
+        .team-container {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .team-box {
+            flex: 1;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .team-box.pros {
+            background: #e3f2fd;
+            border-left: 6px solid #2196f3;
+        }
+
+        .team-box.cons {
+            background: #ffebee;
+            border-left: 6px solid #f44336;
+        }
+
+        .team-name {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+
+        .team-item {
+            margin-bottom: 15px;
+        }
+
+        .team-label {
+            font-weight: bold;
+            color: #34495e;
+            margin-bottom: 5px;
+        }
+
+        .team-content {
+            color: #555;
+            line-height: 1.8;
+        }
+
+        .statement-box {
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            background: #f8f9fa;
+        }
+
+        .statement-box.pros {
+            border-left: 4px solid #2196f3;
+        }
+
+        .statement-box.cons {
+            border-left: 4px solid #f44336;
+        }
+
+        .statement-team {
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .statement-team.pros {
+            color: #2196f3;
+        }
+
+        .statement-team.cons {
+            color: #f44336;
+        }
+
+        .statement-text {
+            color: #555;
+            line-height: 1.8;
+        }
+
+        .participant-box {
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            background: #ffffff;
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .participant-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .participant-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .participant-team {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .participant-team.pros {
+            background: #e3f2fd;
+            color: #2196f3;
+        }
+
+        .participant-team.cons {
+            background: #ffebee;
+            color: #f44336;
+        }
+
+        .participant-analysis {
+            color: #555;
+            line-height: 1.8;
+            margin-bottom: 15px;
+        }
+
+        .participant-contribution {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 3px solid #4a90e2;
+        }
+
+        .contribution-label {
+            font-weight: bold;
+            color: #4a90e2;
+            margin-bottom: 8px;
+        }
+
+        .contribution-text {
+            color: #555;
+            font-style: italic;
+            line-height: 1.8;
+        }
+
+        .footer {
+            margin-top: 60px;
+            padding-top: 20px;
+            border-top: 2px solid #e0e0e0;
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 토론 종합 분석 리포트</h1>
+        <p>Discussion ID: ${discussion_id}</p>
+    </div>
+
+    <!-- AI 최종 판정 -->
+    <div class="section">
+        <h2 class="section-title">🏆 AI 최종 판정</h2>
+        <div class="verdict-box">
+            <div class="verdict-winner">
+                승리팀: ${analysis.winner === 'pros' ? '👍 찬성팀' : '👎 반대팀'}
+            </div>
+            <div class="verdict-text">
+                ${analysis.verdict || '판정 내용이 없습니다.'}
+            </div>
+        </div>
+    </div>
+
+    ${generateTeamAnalysis(analysis)}
+    ${generateKeyStatements(analysis)}
+    ${generateParticipantAnalysis(analysis)}
+
+    <div class="footer">
+        <p>AI 토론 분석 시스템 | 생성일시: ${new Date().toLocaleString('ko-KR')}</p>
+    </div>
+</body>
+</html>
+        `;
+
+        // 디버깅: HTML 파일 저장
+        const fs = require('fs');
+        const path = require('path');
+        const debugHtmlPath = path.join(__dirname, 'debug-pdf.html');
+        fs.writeFileSync(debugHtmlPath, htmlContent, 'utf8');
+        console.log('📝 디버그 HTML 저장됨:', debugHtmlPath);
+
+        console.log('🌐 Puppeteer 브라우저 시작...');
+
+        // Puppeteer로 PDF 생성
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
+
+        const page = await browser.newPage();
+
+        // HTML 콘텐츠 설정
+        await page.setContent(htmlContent, {
+            waitUntil: 'networkidle0',
+            timeout: 30000
+        });
+
+        console.log('📄 페이지 콘텐츠 로드 완료, PDF 생성 시작...');
+
+        // PDF 생성
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: {
+                top: '20mm',
+                right: '15mm',
+                bottom: '20mm',
+                left: '15mm'
+            }
+        });
+
+        console.log('📊 PDF 버퍼 크기:', pdfBuffer.length, 'bytes');
+
+        await browser.close();
+        console.log('✅ Puppeteer PDF 생성 완료');
+
+        // 응답 전송
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=discussion-analysis-${discussion_id}.pdf`);
+        res.send(pdfBuffer);
 
     } catch (error) {
         console.error('PDF 생성 오류:', error);
-        res.status(500).json({ error: 'PDF 생성 중 오류가 발생했습니다.' });
+        res.status(500).json({ error: 'PDF 생성 중 오류가 발생했습니다: ' + error.message });
     }
 });
 
@@ -1180,6 +1607,126 @@ io.on('connection', (socket) => {
             console.error('연결 해제 처리 오류:', error);
         }
     });
+});
+
+// AI 판결문 생성 API
+app.post('/api/generate-verdict', async (req, res) => {
+    try {
+        console.log('⚖️ AI 판결문 생성 요청 받음');
+        const { discussion_id, messages } = req.body;
+
+        console.log('메시지 수:', messages ? messages.length : 0);
+
+        if (!messages || messages.length < 10) {
+            console.log('❌ 메시지 부족:', messages ? messages.length : 0);
+            return res.status(400).json({ error: '최소 10개 이상의 메시지가 필요합니다.' });
+        }
+
+        const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+        if (!GEMINI_API_KEY) {
+            console.error('❌ Gemini API 키가 설정되지 않음');
+            return res.status(500).json({ error: 'Gemini API 키가 설정되지 않았습니다.' });
+        }
+
+        console.log('✅ Gemini API 키 확인됨');
+
+        // 메시지를 텍스트로 변환
+        console.log('메시지 변환 시작...');
+        const messagesText = messages.map(m => {
+            console.log('메시지:', m);
+            return `[${m.role}] ${m.author}: ${m.message}`;
+        }).join('\n');
+
+        console.log('변환된 메시지 텍스트 길이:', messagesText.length);
+
+        // Gemini 프롬프트 - 법원 판결문 형식
+        const prompt = `다음은 찬반 토론의 대화 내용입니다. 법원 판결문 형식으로 이 토론을 분석하여 JSON 형식으로 결과를 제공해주세요.
+
+토론 내용:
+${messagesText}
+
+법원 판결문 형식으로 다음 JSON 구조로 응답해주세요:
+{
+  "case_summary": "사건 개요 (토론 주제와 배경을 법률 문서 형식으로 요약, 3-4문장)",
+  "pros_claim": "찬성 측 주장 요지 (찬성 측의 주요 논거를 법적 문서 형식으로 정리, 5-6문장)",
+  "cons_claim": "반대 측 주장 요지 (반대 측의 주요 논거를 법적 문서 형식으로 정리, 5-6문장)",
+  "judgment": "판단 (양측의 논거를 검토하고 법리적으로 판단한 내용, 8-10문장. '본 재판부는 다음과 같이 판단한다' 형식)",
+  "conclusion": "결론 (최종 판결 및 결론, 3-4문장. '이상의 이유로' 형식으로 시작)"
+}
+
+주의사항:
+1. 법원 판결문의 정중하고 공식적인 어조를 사용하세요.
+2. '본 재판부는', '원고(찬성 측)은', '피고(반대 측)은' 등의 법률 용어를 사용하세요.
+3. 논리적이고 객관적인 분석을 제공하세요.
+4. 각 섹션은 충분히 상세하게 작성하세요.
+5. JSON 형식을 정확히 지켜주세요. 다른 설명 없이 JSON만 응답하세요.`;
+
+        console.log('Gemini API 요청 전송 중...');
+
+        // Gemini API 호출
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+        const geminiResponse = await fetch(geminiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [{
+                        text: prompt
+                    }]
+                }]
+            })
+        });
+
+        console.log('Gemini API 응답 상태:', geminiResponse.status);
+
+        if (!geminiResponse.ok) {
+            const errorText = await geminiResponse.text();
+            console.error('❌ Gemini API 오류 응답:', errorText);
+            throw new Error(`Gemini API 요청 실패: ${geminiResponse.status}`);
+        }
+
+        const geminiData = await geminiResponse.json();
+        console.log('✅ Gemini API 응답 받음');
+
+        // 응답에서 텍스트 추출
+        const resultText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+        console.log('Gemini 응답 텍스트:', resultText);
+
+        if (!resultText) {
+            console.error('❌ Gemini 응답에 텍스트가 없음');
+            throw new Error('AI 응답이 비어있습니다.');
+        }
+
+        // JSON 파싱 시도
+        let result;
+        try {
+            // 마크다운 코드 블록 제거
+            let jsonText = resultText.trim();
+            if (jsonText.startsWith('```json')) {
+                jsonText = jsonText.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+            } else if (jsonText.startsWith('```')) {
+                jsonText = jsonText.replace(/^```\n?/, '').replace(/\n?```$/, '');
+            }
+            result = JSON.parse(jsonText);
+            console.log('✅ JSON 파싱 성공');
+        } catch (parseError) {
+            console.error('❌ JSON 파싱 실패:', parseError);
+            console.error('원본 텍스트:', resultText);
+            throw new Error('AI 응답을 파싱할 수 없습니다.');
+        }
+
+        console.log('✅ 판결문 생성 완료');
+        res.json(result);
+
+    } catch (error) {
+        console.error('❌ AI 판결문 생성 오류:', error);
+        res.status(500).json({
+            error: 'AI 판결문 생성 중 오류가 발생했습니다.',
+            details: error.message
+        });
+    }
 });
 
 // 서버 시작

@@ -216,15 +216,89 @@
 
                             <!-- 흐름 시각화 탭 -->
                             <div class="tab-content" id="tab-flow" style="display: none;">
-                                <div class="empty-state">
-                                    <p>흐름 시각화 기능은 준비 중입니다.</p>
+                                <div class="flow-intro">
+                                    <p>토론의 흐름을 시각적 타임라인으로 확인하세요.</p>
+                                </div>
+                                <div id="flow-timeline" class="flow-timeline">
+                                    <!-- 타임라인이 여기에 동적으로 생성됩니다 -->
                                 </div>
                             </div>
 
                             <!-- AI 판결문 탭 -->
                             <div class="tab-content" id="tab-verdict" style="display: none;">
-                                <div class="empty-state">
-                                    <p>AI 판결문 기능은 준비 중입니다.</p>
+                                <div class="verdict-intro">
+                                    <p>AI가 작성한 공식 판결문을 확인하세요. (최소 10개 이상의 메시지 필요)</p>
+                                </div>
+
+                                <!-- 판결문 시작 전 -->
+                                <div id="verdict-start-view">
+                                    <button class="btn-start-verdict" id="startVerdictBtn">
+                                        <span>⚖️</span>
+                                        <span>AI 판결문 생성하기</span>
+                                    </button>
+                                    <p class="verdict-hint">토론 내용을 분석하여 법원 판결문 형식의 공식 문서를 생성합니다.</p>
+                                </div>
+
+                                <!-- 로딩 상태 -->
+                                <div id="verdict-loading-view" style="display: none;">
+                                    <div class="loading-spinner"></div>
+                                    <p class="loading-text">AI가 판결문을 작성하고 있습니다...</p>
+                                    <div class="skeleton-box"></div>
+                                    <div class="skeleton-box"></div>
+                                </div>
+
+                                <!-- 판결문 결과 -->
+                                <div id="verdict-result-view" style="display: none;">
+                                    <div class="verdict-document">
+                                        <div class="verdict-header">
+                                            <h2>판 결 문</h2>
+                                            <div class="verdict-number" id="verdictNumber"></div>
+                                        </div>
+
+                                        <div class="verdict-section">
+                                            <h3>1. 사건 개요</h3>
+                                            <p id="verdictCase"></p>
+                                        </div>
+
+                                        <div class="verdict-section">
+                                            <h3>2. 당사자 주장 요지</h3>
+                                            <div class="verdict-subsection">
+                                                <h4>가. 찬성 측 주장</h4>
+                                                <p id="verdictProsClaim"></p>
+                                            </div>
+                                            <div class="verdict-subsection">
+                                                <h4>나. 반대 측 주장</h4>
+                                                <p id="verdictConsClaim"></p>
+                                            </div>
+                                        </div>
+
+                                        <div class="verdict-section">
+                                            <h3>3. 판단</h3>
+                                            <p id="verdictJudgment"></p>
+                                        </div>
+
+                                        <div class="verdict-section">
+                                            <h3>4. 결론</h3>
+                                            <p id="verdictConclusion"></p>
+                                        </div>
+
+                                        <div class="verdict-footer">
+                                            <p id="verdictDate"></p>
+                                            <p class="verdict-sign">AI 판사 Claude</p>
+                                        </div>
+                                    </div>
+
+                                    <!-- 하단 버튼 -->
+                                    <div class="verdict-actions">
+                                        <button class="btn-secondary" id="rewriteVerdictBtn">
+                                            <span>⚖️</span>
+                                            <span>다시 작성하기</span>
+                                        </button>
+                                        <button class="btn-primary" id="downloadVerdictPdfBtn">
+                                            <span>📄</span>
+                                            <span>PDF로 다운로드</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -340,6 +414,10 @@
 
     <!-- Socket.io -->
     <script src="/socket.io/socket.io.js"></script>
+    <!-- html2canvas for screen capture -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- jsPDF for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <!-- 메인 스크립트 -->
     <script src="js/room.js"></script>
 </body>
