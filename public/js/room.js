@@ -1304,10 +1304,8 @@ function renderFlowAnalysisResult(result) {
         renderTrendChartFromAI(result.trend_data);
     }
 
-    // 5. 핵심 키워드 트렌드 차트
-    if (result.keyword_data) {
-        renderKeywordChartFromAI(result.keyword_data);
-    }
+    // 5. 핵심 키워드 트렌드 차트 (데이터가 없어도 안내 메시지 표시)
+    renderKeywordChartFromAI(result.keyword_data || {});
 }
 
 // 1. 참여자별 발언 비중 도넛 차트 (AI 데이터 사용)
@@ -1369,21 +1367,21 @@ function renderParticipantChartFromAI(participantStats) {
     });
 }
 
-// 1-1. 팀별 발언 비중 도넛 차트 (상대적 비중 계산)
+// 1-1. 팀별 발언 비중 도넛 차트 (상대적 비중 계산 - 찬성/반대만)
 function renderTeamChartFromAI(participantStats) {
     const canvas = document.getElementById('teamChart');
     if (!canvas) return;
 
-    // 팀별 발언 횟수와 인원 수 계산
+    // 팀별 발언 횟수와 인원 수 계산 (찬성/반대만)
     const teamData = {
         '찬성': { count: 0, members: 0 },
-        '반대': { count: 0, members: 0 },
-        '중립': { count: 0, members: 0 }
+        '반대': { count: 0, members: 0 }
     };
 
     participantStats.forEach(p => {
-        const role = p.role || '중립';
-        if (teamData[role]) {
+        const role = p.role;
+        // 찬성 또는 반대인 경우만 집계
+        if (role === '찬성' || role === '반대') {
             teamData[role].count += p.count;
             teamData[role].members += 1;
         }
@@ -1399,7 +1397,7 @@ function renderTeamChartFromAI(participantStats) {
         }
     });
 
-    // 차트 데이터 준비
+    // 차트 데이터 준비 (찬성/반대만)
     const labels = Object.keys(teamAverages).filter(team => teamAverages[team] > 0);
     const data = labels.map(team => teamAverages[team]);
     const colors = labels.map(team => {
@@ -1643,6 +1641,13 @@ function renderKeywordChartFromAI(keywordData) {
     const keywords = keywordData.keywords || [];
     const phases = keywordData.phases || ['초반', '중반', '후반'];
     const data = keywordData.data || [];
+
+    // 데이터가 없으면 차트를 숨기고 안내 메시지 표시
+    if (keywords.length === 0 || data.length === 0) {
+        const wrapper = canvas.parentElement;
+        wrapper.innerHTML = '<p style="text-align: center; padding: 4rem; color: #9ca3af;">AI 분석 중 키워드 데이터를 추출하지 못했습니다.<br>토론이 더 진행된 후 다시 분석해주세요.</p>';
+        return;
+    }
 
     // 데이터셋 생성 (각 키워드별로)
     const colors = [
