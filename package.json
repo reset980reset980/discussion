@@ -26,7 +26,8 @@
     "puppeteer": "^24.27.0",
     "qrcode": "^1.5.4",
     "shortid": "^2.2.17",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.2",

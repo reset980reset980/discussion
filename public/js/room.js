@@ -588,8 +588,13 @@ function addMessageToUI(data) {
 
 // 역할에 따른 CSS 클래스 반환
 function getRoleClass(role) {
-    if (role === '찬성') return 'role-pros';
-    if (role === '반대') return 'role-cons';
+    // 실제 팀명 확인
+    const team1Name = discussionInfo?.team1_name || '찬성';
+    const team2Name = discussionInfo?.team2_name || '반대';
+
+    // AI 분석 결과가 "찬성"/"반대"로 오는 경우 또는 실제 팀명과 비교
+    if (role === '찬성' || role === team1Name) return 'role-pros';
+    if (role === '반대' || role === team2Name) return 'role-cons';
     return 'role-neutral';
 }
 
