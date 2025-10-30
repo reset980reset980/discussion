@@ -1193,6 +1193,7 @@ let participantChartInstance = null;
 let teamChartInstance = null;
 let interactionChartInstance = null;
 let trendChartInstance = null;
+let keywordChartInstance = null;
 let flowAnalysisResult = null;
 
 // 흐름 분석 시작 버튼
@@ -1263,6 +1264,7 @@ if (reanalyzeFlowBtn) {
         if (teamChartInstance) teamChartInstance.destroy();
         if (interactionChartInstance) interactionChartInstance.destroy();
         if (trendChartInstance) trendChartInstance.destroy();
+        if (keywordChartInstance) keywordChartInstance.destroy();
     });
 }
 
@@ -1292,14 +1294,19 @@ function renderFlowAnalysisResult(result) {
         renderTeamChartFromAI(result.participant_stats);
     }
 
-    // 3. 참여자 상호작용 차트
-    if (result.interaction_stats) {
-        renderInteractionChartFromAI(result.interaction_stats);
+    // 3. 참여자 상호작용 6각형 레이더 차트 (상위 5명 + 기타 학생들)
+    if (result.participant_stats) {
+        renderInteractionChartFromAI(result.participant_stats);
     }
 
     // 4. 토론 흐름 트렌드 차트
     if (result.trend_data) {
         renderTrendChartFromAI(result.trend_data);
+    }
+
+    // 5. 핵심 키워드 트렌드 차트
+    if (result.keyword_data) {
+        renderKeywordChartFromAI(result.keyword_data);
     }
 }
 
@@ -1453,30 +1460,32 @@ function renderTeamChartFromAI(participantStats) {
     });
 }
 
-// 2. AI 기반 상호작용 레이더 차트
-function renderInteractionChartFromAI(interactionStats) {
+// 2. 참여자 상호작용 6각형 레이더 차트 (상위 5명 + 기타 학생들)
+function renderInteractionChartFromAI(participantStats) {
     const canvas = document.getElementById('interactionChart');
     if (!canvas) return;
 
-    // AI가 제공한 상호작용 통계 데이터 사용
-    // 예상 구조: [{name, messageCount, responseCount, avgLength, role}]
-    const datasets = interactionStats.map((participant, idx) => {
-        let color = 'rgba(107, 114, 128, 0.6)';
-        if (participant.role === '찬성') color = 'rgba(16, 185, 129, 0.6)';
-        if (participant.role === '반대') color = 'rgba(239, 68, 68, 0.6)';
+    // 발언 횟수 기준으로 정렬
+    const sorted = [...participantStats].sort((a, b) => (b.count || 0) - (a.count || 0));
 
-        return {
-            label: participant.name,
-            data: [
-                participant.messageCount || 0,
-                participant.responseCount || 0,
-                (participant.avgLength || 0) / 10  // 스케일 조정
-            ],
-            backgroundColor: color,
-            borderColor: color.replace('0.6', '1'),
-            borderWidth: 2
-        };
-    });
+    // 상위 5명 추출
+    const top5 = sorted.slice(0, 5);
+
+    // 나머지 참여자들의 발언 횟수 합산 (기타 학생들)
+    const others = sorted.slice(5);
+    const othersCount = others.reduce((sum, p) => sum + (p.count || 0), 0);
+
+    // 6개 축 라벨 생성: 상위 5명 + "기타 학생들"
+    const labels = top5.map(p => p.name);
+    if (othersCount > 0) {
+        labels.push('기타 학생들');
+    }
+
+    // 6개 축 데이터 생성
+    const data = top5.map(p => p.count || 0);
+    if (othersCount > 0) {
+        data.push(othersCount);
+    }
 
     // 기존 차트 파괴
     if (interactionChartInstance) {
@@ -1487,8 +1496,18 @@ function renderInteractionChartFromAI(interactionStats) {
     interactionChartInstance = new Chart(canvas, {
         type: 'radar',
         data: {
-            labels: ['발언 횟수', '응답 횟수', '평균 발언 길이'],
-            datasets: datasets
+            labels: labels,
+            datasets: [{
+                label: '발언 횟수',
+                data: data,
+                backgroundColor: 'rgba(59, 130, 246, 0.3)',  // 파란색 반투명
+                borderColor: 'rgba(59, 130, 246, 0.8)',
+                borderWidth: 2,
+                pointBackgroundColor: 'rgba(59, 130, 246, 1)',
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: 'rgba(59, 130, 246, 1)'
+            }]
         },
         options: {
             responsive: true,
@@ -1497,7 +1516,7 @@ function renderInteractionChartFromAI(interactionStats) {
                 r: {
                     beginAtZero: true,
                     ticks: {
-                        stepSize: 5
+                        stepSize: Math.max(...data) > 20 ? 5 : 2  // 동적 스케일
                     },
                     grid: {
                         color: 'rgba(0, 0, 0, 0.3)',  // 배경 라인 진하게
@@ -1511,11 +1530,12 @@ function renderInteractionChartFromAI(interactionStats) {
             },
             plugins: {
                 legend: {
-                    position: 'bottom',
-                    labels: {
-                        padding: 15,
-                        font: {
-                            size: 12
+                    display: false  // 범례 숨김 (단일 데이터셋이므로)
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `발언 횟수: ${context.parsed.r}회`;
                         }
                     }
                 }
@@ -1596,6 +1616,115 @@ function renderTrendChartFromAI(trendData) {
                         padding: 15,
                         font: {
                             size: 12
+                        }
+                    }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            },
+            interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
+            }
+        }
+    });
+}
+
+// 4. 핵심 키워드 트렌드 면적 그래프
+function renderKeywordChartFromAI(keywordData) {
+    const canvas = document.getElementById('keywordChart');
+    if (!canvas) return;
+
+    // AI가 제공한 키워드 트렌드 데이터 사용
+    // 예상 구조: {keywords: ['초반', '유튜브', ...], phases: ['초반', '중반', '후반'], data: [[8,5,3], [7,6,4], ...]}
+    const keywords = keywordData.keywords || [];
+    const phases = keywordData.phases || ['초반', '중반', '후반'];
+    const data = keywordData.data || [];
+
+    // 데이터셋 생성 (각 키워드별로)
+    const colors = [
+        'rgba(239, 68, 68, 0.6)',     // 빨강
+        'rgba(59, 130, 246, 0.6)',    // 파랑
+        'rgba(16, 185, 129, 0.6)',    // 초록
+        'rgba(245, 158, 11, 0.6)',    // 주황
+        'rgba(139, 92, 246, 0.6)',    // 보라
+        'rgba(236, 72, 153, 0.6)',    // 핑크
+        'rgba(20, 184, 166, 0.6)'     // 청록
+    ];
+
+    const datasets = keywords.map((keyword, idx) => {
+        const color = colors[idx % colors.length];
+        return {
+            label: keyword,
+            data: data[idx] || [],
+            backgroundColor: color,
+            borderColor: color.replace('0.6', '1'),
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4
+        };
+    });
+
+    // 기존 차트 파괴
+    if (keywordChartInstance) {
+        keywordChartInstance.destroy();
+    }
+
+    // 차트 생성
+    keywordChartInstance = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: phases,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: '토론 진행 단계'
+                    }
+                },
+                y: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: '키워드 언급 빈도'
+                    },
+                    beginAtZero: true
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'left',  // 왼쪽에 키워드 목록 표시
+                    labels: {
+                        padding: 15,
+                        font: {
+                            size: 12
+                        },
+                        generateLabels: function(chart) {
+                            const data = chart.data;
+                            if (data.datasets.length) {
+                                return data.datasets.map((dataset, i) => {
+                                    // 총 빈도수 계산
+                                    const total = dataset.data.reduce((sum, val) => sum + val, 0);
+                                    return {
+                                        text: `${dataset.label}: ${total}`,
+                                        fillStyle: dataset.backgroundColor,
+                                        strokeStyle: dataset.borderColor,
+                                        lineWidth: dataset.borderWidth,
+                                        hidden: false,
+                                        index: i
+                                    };
+                                });
+                            }
+                            return [];
                         }
                     }
                 },
