@@ -70,12 +70,8 @@ function openSidebar(panelName, title) {
         activeBtn.classList.add('active');
     }
 
-    // 브라우저가 초기 상태를 렌더링한 후 애니메이션이 작동하도록 지연
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            sidebar.classList.add('active');
-        });
-    });
+    // 사이드바 열기 (flex-basis transition 사용)
+    sidebar.classList.add('active');
 
     // 패널별 로드 함수 호출
     handlePanelSwitch(panelName);
