@@ -1732,6 +1732,8 @@ function renderKeywordChartFromAI(keywordData) {
                         font: {
                             size: 12
                         },
+                        usePointStyle: true,  // 박스 대신 점(원형)으로 표시
+                        pointStyle: 'circle',  // 원형 점
                         generateLabels: function(chart) {
                             const data = chart.data;
                             if (data.datasets.length) {
