@@ -226,8 +226,8 @@ function renderDiscussions() {
             <div class="card-header">
                 <h3 class="discussion-title">
                     ${discussion.is_private === true ? '<i class="fas fa-lock"></i> ' : ''}${escapeHtml(discussion.title)}
+                    <span class="type-badge ${discussion.type}">${discussion.type}</span>
                 </h3>
-                <div class="type-badge ${discussion.type}">${discussion.type}</div>
                 <div class="card-actions">
                     ${renderActionButtons(discussion)}
                 </div>
@@ -910,6 +910,30 @@ function openEditModal(discussion) {
         handleModeChange(); // 관련 섹션 표시/숨김
     }
 
+    // 역할극 모드일 때 역할 목록 채우기
+    if (discussion.type === '역할극' && discussion.roles) {
+        const roleListInput = document.getElementById('roleList');
+        if (roleListInput) {
+            try {
+                // JSON 파싱 (문자열이면)
+                const roles = typeof discussion.roles === 'string' ? JSON.parse(discussion.roles) : discussion.roles;
+                // 배열을 쉼표로 구분된 문자열로 변환
+                roleListInput.value = roles.join(', ');
+            } catch (error) {
+                console.error('역할 목록 파싱 오류:', error);
+                roleListInput.value = '';
+            }
+        }
+    }
+
+    // 팀전 모드일 때 팀명 채우기
+    if (discussion.type === '팀전') {
+        const prosNameInput = document.getElementById('prosName');
+        const consNameInput = document.getElementById('consName');
+        if (prosNameInput) prosNameInput.value = discussion.team1_name || '찬성';
+        if (consNameInput) consNameInput.value = discussion.team2_name || '반대';
+    }
+
     // 모달 타이틀 변경
     document.querySelector('#newDiscussionModal h2').textContent = '토론 수정하기';
 
@@ -1080,6 +1104,109 @@ async function generateAIDescription() {
     } finally {
         descriptionTextarea.disabled = false;
     }
+}
+
+// AI 역할 생성 (버튼 클릭 시)
+async function generateAIRoles() {
+    const title = document.getElementById('discussionTitle').value.trim();
+    const roleListInput = document.getElementById('roleList');
+
+    if (!title) {
+        showToast('토론 제목을 먼저 입력해주세요.', 'warning');
+        return;
+    }
+
+    // AI 생성 애니메이션
+    roleListInput.value = '역할을 생성하는 중...';
+    roleListInput.disabled = true;
+
+    try {
+        const roles = await generateAIRolesWithAPI(title);
+        roleListInput.value = roles.join(', ');
+        showToast('AI가 역할 목록을 생성했습니다!', 'success');
+    } catch (error) {
+        console.error('AI 역할 생성 실패:', error);
+        showToast('AI 역할 생성에 실패했습니다. 직접 입력해주세요.', 'error');
+        roleListInput.value = '';
+    } finally {
+        roleListInput.disabled = false;
+    }
+}
+
+// Gemini API를 사용한 AI 역할 생성
+async function generateAIRolesWithAPI(title) {
+    // 서버에서 API 키 로드
+    let API_KEY;
+    try {
+        const configResponse = await fetch('/api/config');
+        const config = await configResponse.json();
+        API_KEY = config.GEMINI_API_KEY;
+
+        if (!API_KEY) {
+            throw new Error('Gemini API 키가 설정되지 않았습니다.');
+        }
+    } catch (error) {
+        console.error('API 설정 로드 실패:', error);
+        throw new Error('API 설정을 불러올 수 없습니다.');
+    }
+
+    const prompt = `다음 토론 주제에 대해 토론에 참여할 수 있는 **8-10개의 전문적인 역할**을 생성해주세요:
+
+토론 주제: "${title}"
+
+요구사항:
+1. 역할은 반드시 **한국어**로 작성해주세요
+2. 각 역할은 토론 주제와 관련된 전문가여야 합니다 (예: 법학 교수, 응급의학과 의사, 심리학자, 경제학자, 환경운동가 등)
+3. 다양한 관점을 제시할 수 있도록 서로 다른 분야의 역할을 포함해주세요
+4. 역할 이름은 간결하고 명확해야 합니다 (2-6단어)
+5. 찬성/반대 양측 모두에서 선택할 수 있는 중립적인 역할들이어야 합니다
+
+JSON 형식으로 응답해주세요:
+{
+  "roles": ["역할1", "역할2", "역할3", ...]
+}`;
+
+    const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [{ text: prompt }]
+                }],
+                generationConfig: {
+                    temperature: 0.8,
+                    maxOutputTokens: 2000,
+                    responseMimeType: "application/json"
+                }
+            })
+        }
+    );
+
+    if (!response.ok) {
+        throw new Error(`Gemini API 오류: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.candidates || !data.candidates[0]) {
+        throw new Error('Gemini API 응답에 candidates가 없습니다.');
+    }
+
+    const candidate = data.candidates[0];
+
+    if (!candidate.content || !candidate.content.parts || !candidate.content.parts[0]) {
+        throw new Error(`Gemini API 응답 오류: ${candidate.finishReason || 'UNKNOWN'}`);
+    }
+
+    const responseText = candidate.content.parts[0].text;
+
+    // JSON 파싱
+    const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/) || responseText.match(/\{[\s\S]*\}/);
+    const rolesData = JSON.parse(jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : responseText);
+
+    return rolesData.roles || [];
 }
 
 // Gemini API를 사용한 AI 설명 생성

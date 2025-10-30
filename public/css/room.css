@@ -80,6 +80,78 @@ body {
     background: rgba(255,0,0,0.3);
 }
 
+/* ========================================== 토론 상황 ========================================== */
+.discussion-context {
+    background: #fff9e6;
+    border-bottom: 1px solid #e0e0e0;
+    transition: all 0.3s ease;
+}
+
+.context-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1.5rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.context-header:hover {
+    background: rgba(74, 144, 226, 0.05);
+}
+
+.context-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: #333;
+    font-size: 0.95rem;
+}
+
+.context-icon {
+    font-size: 1.1rem;
+}
+
+.context-toggle {
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 0.25rem;
+    transition: transform 0.3s ease;
+    font-size: 0.875rem;
+}
+
+.context-toggle.collapsed .toggle-icon {
+    transform: rotate(-90deg);
+}
+
+.context-content {
+    padding: 0.5rem 1.5rem;
+    background: white;
+    border-top: 1px solid #e0e0e0;
+    max-height: 300px;
+    overflow-y: auto;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+}
+
+.context-content.collapsed {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    overflow: hidden;
+}
+
+#contextDescription {
+    color: #444;
+    line-height: 1.4;
+    font-size: 0.925rem;
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
 /* ========================================== 메인 레이아웃 ========================================== */
 .main-layout {
     flex: 1;

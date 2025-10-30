@@ -40,7 +40,11 @@ async function initializeDatabase() {
         await pool.query(`
             ALTER TABLE discussions
             ADD COLUMN IF NOT EXISTS is_private BOOLEAN DEFAULT false,
-            ADD COLUMN IF NOT EXISTS entry_code VARCHAR(20)
+            ADD COLUMN IF NOT EXISTS entry_code VARCHAR(20),
+            ADD COLUMN IF NOT EXISTS password VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS team1_name VARCHAR(50) DEFAULT '찬성',
+            ADD COLUMN IF NOT EXISTS team2_name VARCHAR(50) DEFAULT '반대',
+            ADD COLUMN IF NOT EXISTS roles TEXT
         `);
 
         // 인덱스 생성
@@ -99,6 +103,47 @@ async function initializeDatabase() {
         // 인덱스 생성
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_participants_discussion_id ON discussion_participants (discussion_id)`);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_participants_last_activity ON discussion_participants (last_activity)`);
+
+        // 실시간 채팅 참여자 테이블 생성 (Socket.io 사용)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS participants (
+                id SERIAL PRIMARY KEY,
+                discussion_id INTEGER NOT NULL,
+                user_name VARCHAR(100) NOT NULL,
+                user_role VARCHAR(100),
+                socket_id VARCHAR(255),
+                is_online BOOLEAN DEFAULT true,
+                avatar_image_url VARCHAR(255),
+                avatar_color VARCHAR(20),
+                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (discussion_id) REFERENCES discussions(id) ON DELETE CASCADE
+            )
+        `);
+
+        // 인덱스 생성
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_real_participants_discussion_id ON participants (discussion_id)`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_real_participants_socket_id ON participants (socket_id)`);
+
+        // 실시간 채팅 메시지 테이블 생성
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS messages (
+                id SERIAL PRIMARY KEY,
+                discussion_id INTEGER NOT NULL,
+                participant_id INTEGER,
+                user_name VARCHAR(100) NOT NULL,
+                user_role VARCHAR(100),
+                message TEXT NOT NULL,
+                message_type VARCHAR(20) DEFAULT 'user',
+                is_ai BOOLEAN DEFAULT false,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (discussion_id) REFERENCES discussions(id) ON DELETE CASCADE,
+                FOREIGN KEY (participant_id) REFERENCES participants(id) ON DELETE SET NULL
+            )
+        `);
+
+        // 인덱스 생성
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_discussion_id ON messages (discussion_id)`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages (created_at)`);
 
         // 샘플 데이터 삽입 비활성화 (사용자 요청)
         // const result = await pool.query('SELECT COUNT(*) as count FROM discussions');

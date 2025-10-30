@@ -226,6 +226,18 @@ function initializeEventListeners() {
 
     document.getElementById('closeSidebarBtn').addEventListener('click', closeSidebar);
 
+    // 토론 상황 토글
+    const contextHeader = document.getElementById('contextHeader');
+    const contextToggle = document.getElementById('contextToggle');
+    const contextContent = document.getElementById('contextContent');
+
+    if (contextHeader && contextToggle && contextContent) {
+        contextHeader.addEventListener('click', () => {
+            contextContent.classList.toggle('collapsed');
+            contextToggle.classList.toggle('collapsed');
+        });
+    }
+
     // 최초 5분 동안 AI 질문 버튼 비활성화
     startInitialTimer();
 
@@ -254,14 +266,34 @@ async function loadDiscussionInfoForJoin() {
             discussionInfo = data;
             document.getElementById('roomTitle').textContent = data.title;
 
+            // 토론 상황 표시
+            const contextDescription = document.getElementById('contextDescription');
+            const discussionContext = document.getElementById('discussionContext');
+            if (data.description && data.description.trim()) {
+                contextDescription.textContent = data.description;
+                if (discussionContext) discussionContext.style.display = 'block';
+            } else {
+                contextDescription.textContent = '토론 상황이 설정되지 않았습니다.';
+                if (discussionContext) discussionContext.style.display = 'none';
+            }
+
             // 팀전이면 역할 선택 표시
             const roleSection = document.getElementById('joinRoleSection');
             const roleRadioGroup = document.getElementById('joinRoleRadioGroup');
+            const roleDropdownSection = document.getElementById('joinRoleDropdownSection');
+            const roleSelect = document.getElementById('joinRoleSelect');
+
+            // 참여자 패널의 팀 통계 영역 제어
+            const participantsStats = document.querySelector('.participants-stats');
 
             if (data.type === '팀전') {
                 roleSection.style.display = 'flex';
+                roleDropdownSection.style.display = 'none';
                 const team1Name = data.team1_name || '찬성';
                 const team2Name = data.team2_name || '반대';
+
+                // 팀 통계 영역 표시
+                if (participantsStats) participantsStats.style.display = 'block';
 
                 // 참여자 패널의 팀 라벨 업데이트
                 const team1Label = document.getElementById('team1Label');
@@ -280,16 +312,44 @@ async function loadDiscussionInfoForJoin() {
                     </div>
                 `;
             } else if (data.type === '역할극') {
-                roleSection.style.display = 'flex';
-                // 역할극은 나중에 구현
-                roleRadioGroup.innerHTML = `
-                    <div class="join-modal-radio-item">
-                        <input type="radio" id="roleParticipant" name="userRole" value="참여자" checked>
-                        <label for="roleParticipant">참여자</label>
-                    </div>
-                `;
-            } else {
+                // 역할극 모드: 드롭다운으로 역할 선택
                 roleSection.style.display = 'none';
+                roleDropdownSection.style.display = 'flex';
+
+                // 팀 통계 영역 숨기기
+                if (participantsStats) participantsStats.style.display = 'none';
+
+                // 역할 목록 파싱 (JSON 문자열 → 배열)
+                let roles = [];
+                if (data.roles) {
+                    try {
+                        roles = typeof data.roles === 'string' ? JSON.parse(data.roles) : data.roles;
+                    } catch (error) {
+                        console.error('역할 목록 파싱 오류:', error);
+                        roles = [];
+                    }
+                }
+
+                // 드롭다운 옵션 생성
+                if (roles.length > 0) {
+                    roleSelect.innerHTML = '<option value="">자신의 역할을 선택하세요</option>';
+                    roles.forEach(role => {
+                        const option = document.createElement('option');
+                        option.value = role;
+                        option.textContent = role;
+                        roleSelect.appendChild(option);
+                    });
+                } else {
+                    // 역할 목록이 없는 경우 기본값
+                    roleSelect.innerHTML = '<option value="">역할 정보가 없습니다</option>';
+                }
+            } else {
+                // 자유토론 모드
+                roleSection.style.display = 'none';
+                roleDropdownSection.style.display = 'none';
+
+                // 팀 통계 영역 숨기기
+                if (participantsStats) participantsStats.style.display = 'none';
             }
 
             console.log('토론방 정보 로드 완료:', data);
@@ -324,10 +384,18 @@ function showJoinModal() {
     const savedUser = localStorage.getItem(`room_${currentDiscussionId}_user`);
     if (savedUser) {
         const userData = JSON.parse(savedUser);
-        document.getElementById('joinUserName').value = userData.name;
+        // 저장된 사용자 정보가 있으면 자동 입장
+        currentUser.name = userData.name;
+        currentUser.role = userData.role || '참여자';
+
+        console.log('저장된 사용자 정보로 자동 입장:', currentUser);
+
+        // Socket 초기화 및 입장
+        initializeSocket();
+        return;
     }
 
-    // 입장 모달 표시
+    // 저장된 정보가 없으면 입장 모달 표시
     document.getElementById('joinModal').style.display = 'flex';
 }
 
@@ -364,8 +432,20 @@ function confirmJoin() {
 
     let userRole = '참여자';
     const roleSection = document.getElementById('joinRoleSection');
+    const roleDropdownSection = document.getElementById('joinRoleDropdownSection');
 
-    if (roleSection.style.display === 'flex') {
+    // 역할 모드: 드롭다운에서 역할 가져오기
+    if (roleDropdownSection && roleDropdownSection.style.display === 'flex') {
+        const roleSelect = document.getElementById('joinRoleSelect');
+        if (roleSelect && roleSelect.value) {
+            userRole = roleSelect.value;
+        } else {
+            alert('역할을 선택해주세요');
+            return;
+        }
+    }
+    // 팀전 모드: 라디오 버튼에서 역할 가져오기
+    else if (roleSection && roleSection.style.display === 'flex') {
         const selectedRadio = document.querySelector('input[name="userRole"]:checked');
         if (selectedRadio) {
             userRole = selectedRadio.value;
@@ -1130,66 +1210,43 @@ if (downloadPdfBtn2) {
         }
 
         try {
-            console.log('📄 PDF 생성 시작...');
+            console.log('📊 서버에 종합분석 PDF 생성 요청...');
 
-            // 분석 결과 패널 가져오기
-            const analysisResultView = document.getElementById('analysis-result-view');
-            if (!analysisResultView || analysisResultView.style.display === 'none') {
-                alert('분석 결과가 표시되지 않았습니다.');
+            if (!analysisResult) {
+                alert('종합분석 결과가 없습니다.');
                 return;
             }
 
-            // html2canvas로 캡처
-            console.log('📸 화면 캡처 중...');
-            const canvas = await html2canvas(analysisResultView, {
-                scale: 2,
-                useCORS: true,
-                logging: false,
-                backgroundColor: '#ffffff'
+            // 서버 API 호출
+            const response = await fetch(`/api/discussions/${currentDiscussionId}/generate-analysis-pdf`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    analysisData: analysisResult,
+                    discussionTitle: discussionInfo?.title || '토론'
+                })
             });
 
-            console.log('🖼️ 캔버스 생성 완료:', canvas.width, 'x', canvas.height);
-
-            // jsPDF 인스턴스 생성
-            const { jsPDF } = window.jspdf;
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
-
-            // A4 크기 (mm)
-            const pdfWidth = 210;
-            const pdfHeight = 297;
-
-            // 캔버스를 이미지로 변환
-            const imgData = canvas.toDataURL('image/png');
-
-            // 이미지 크기 계산 (비율 유지)
-            const imgWidth = pdfWidth - 20; // 좌우 여백 10mm씩
-            const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-            // 여러 페이지로 나누기
-            let heightLeft = imgHeight;
-            let position = 10; // 상단 여백
-
-            // 첫 페이지
-            pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
-            heightLeft -= (pdfHeight - 20); // 페이지 높이에서 여백 제외
-
-            // 추가 페이지 생성
-            while (heightLeft > 0) {
-                position = heightLeft - imgHeight + 10;
-                pdf.addPage();
-                pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
-                heightLeft -= (pdfHeight - 20);
+            if (!response.ok) {
+                throw new Error('PDF 생성 실패');
             }
 
-            // PDF 다운로드
-            const filename = 'discussion-analysis-' + currentDiscussionId + '.pdf';
-            pdf.save(filename);
+            // Blob으로 변환
+            const blob = await response.blob();
 
-            console.log('✅ PDF 다운로드 완료:', filename);
+            // 다운로드
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `analysis-${currentDiscussionId}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            console.log('✅ 종합분석 PDF 다운로드 완료');
 
         } catch (error) {
             console.error('PDF 다운로드 오류:', error);
@@ -1202,67 +1259,68 @@ if (downloadPdfBtn2) {
 const downloadFlowPdfBtn = document.getElementById('downloadFlowPdfBtn');
 if (downloadFlowPdfBtn) {
     downloadFlowPdfBtn.addEventListener('click', async () => {
+        if (!flowAnalysisResult) {
+            alert('흐름 분석 결과가 없습니다.');
+            return;
+        }
+
         try {
-            console.log('📄 흐름 시각화 PDF 생성 시작...');
+            console.log('📊 서버에 흐름시각화 PDF 생성 요청...');
 
-            // 흐름 분석 결과 패널 가져오기
-            const flowResultView = document.getElementById('flow-result-view');
-            if (!flowResultView || flowResultView.style.display === 'none') {
-                alert('흐름 분석 결과가 표시되지 않았습니다.');
-                return;
+            // 차트 이미지들을 base64로 변환
+            const chartImages = {};
+
+            if (participantChartInstance) {
+                chartImages.participantChart = participantChartInstance.toBase64Image();
             }
 
-            // html2canvas로 캡처
-            console.log('📸 화면 캡처 중...');
-            const canvas = await html2canvas(flowResultView, {
-                scale: 2,
-                useCORS: true,
-                logging: false,
-                backgroundColor: '#ffffff'
-            });
-
-            console.log('🖼️ 캔버스 생성 완료:', canvas.width, 'x', canvas.height);
-
-            // jsPDF 인스턴스 생성
-            const { jsPDF } = window.jspdf;
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
-
-            // A4 크기 (mm)
-            const pdfWidth = 210;
-            const pdfHeight = 297;
-
-            // 캔버스를 이미지로 변환
-            const imgData = canvas.toDataURL('image/png');
-
-            // 이미지 크기 계산 (비율 유지)
-            const imgWidth = pdfWidth - 20; // 좌우 여백 10mm씩
-            const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-            // 여러 페이지로 나누기
-            let heightLeft = imgHeight;
-            let position = 10; // 상단 여백
-
-            // 첫 페이지
-            pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
-            heightLeft -= (pdfHeight - 20); // 페이지 높이에서 여백 제외
-
-            // 추가 페이지 생성
-            while (heightLeft > 0) {
-                position = heightLeft - imgHeight + 10;
-                pdf.addPage();
-                pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
-                heightLeft -= (pdfHeight - 20);
+            if (teamChartInstance) {
+                chartImages.teamChart = teamChartInstance.toBase64Image();
             }
 
-            // PDF 다운로드
-            const filename = 'discussion-flow-' + currentDiscussionId + '.pdf';
-            pdf.save(filename);
+            if (interactionChartInstance) {
+                chartImages.interactionChart = interactionChartInstance.toBase64Image();
+            }
 
-            console.log('✅ 흐름 시각화 PDF 다운로드 완료:', filename);
+            if (trendChartInstance) {
+                chartImages.trendChart = trendChartInstance.toBase64Image();
+            }
+
+            if (keywordChartInstance) {
+                chartImages.keywordChart = keywordChartInstance.toBase64Image();
+            }
+
+            // 서버 API 호출
+            const response = await fetch(`/api/discussions/${currentDiscussionId}/generate-flow-pdf`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    flowData: flowAnalysisResult,
+                    chartImages: chartImages,
+                    discussionTitle: discussionInfo?.title || '토론'
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('PDF 생성 실패');
+            }
+
+            // Blob으로 변환
+            const blob = await response.blob();
+
+            // 다운로드
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `flow-${currentDiscussionId}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            console.log('✅ 흐름시각화 PDF 다운로드 완료');
 
         } catch (error) {
             console.error('PDF 다운로드 오류:', error);
@@ -2220,7 +2278,7 @@ if (rewriteVerdictBtn) {
     });
 }
 
-// 판결문 PDF 다운로드 버튼
+// 판결문 PDF 다운로드 버튼 (서버 API 사용 - PDFKit)
 const downloadVerdictPdfBtn = document.getElementById('downloadVerdictPdfBtn');
 if (downloadVerdictPdfBtn) {
     downloadVerdictPdfBtn.addEventListener('click', async () => {
@@ -2230,66 +2288,38 @@ if (downloadVerdictPdfBtn) {
         }
 
         try {
-            console.log('📄 판결문 PDF 생성 시작...');
+            console.log('📄 서버에 PDF 생성 요청...');
 
-            // 판결문 결과 패널 가져오기
-            const verdictResultView = document.getElementById('verdict-result-view');
-            if (!verdictResultView || verdictResultView.style.display === 'none') {
-                alert('판결문이 표시되지 않았습니다.');
-                return;
-            }
-
-            // html2canvas로 캡처
-            console.log('📸 화면 캡처 중...');
-            const canvas = await html2canvas(verdictResultView, {
-                scale: 2,
-                useCORS: true,
-                logging: false,
-                backgroundColor: '#ffffff'
+            // 서버 API 호출
+            const response = await fetch(`/api/discussions/${currentDiscussionId}/generate-verdict-pdf`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    verdictData: verdictResult,
+                    discussionTitle: discussionInfo?.title || '토론'
+                })
             });
 
-            console.log('🖼️ 캔버스 생성 완료:', canvas.width, 'x', canvas.height);
-
-            // jsPDF 인스턴스 생성
-            const { jsPDF } = window.jspdf;
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
-
-            // A4 크기 (mm)
-            const pdfWidth = 210;
-            const pdfHeight = 297;
-
-            // 캔버스를 이미지로 변환
-            const imgData = canvas.toDataURL('image/png');
-
-            // 이미지 크기 계산 (비율 유지)
-            const imgWidth = pdfWidth - 20; // 좌우 여백 10mm씩
-            const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-            // 여러 페이지로 나누기
-            let heightLeft = imgHeight;
-            let position = 10; // 상단 여백
-
-            // 첫 페이지
-            pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
-            heightLeft -= (pdfHeight - 20); // 페이지 높이에서 여백 제외
-
-            // 추가 페이지 생성
-            while (heightLeft > 0) {
-                position = heightLeft - imgHeight + 10;
-                pdf.addPage();
-                pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
-                heightLeft -= (pdfHeight - 20);
+            if (!response.ok) {
+                throw new Error('PDF 생성 실패');
             }
 
-            // PDF 다운로드
-            const filename = 'discussion-verdict-' + currentDiscussionId + '.pdf';
-            pdf.save(filename);
+            // Blob으로 변환
+            const blob = await response.blob();
 
-            console.log('✅ 판결문 PDF 다운로드 완료:', filename);
+            // 다운로드
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `verdict-${currentDiscussionId}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            console.log('✅ PDF 다운로드 완료');
 
         } catch (error) {
             console.error('판결문 PDF 다운로드 오류:', error);

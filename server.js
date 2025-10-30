@@ -4,6 +4,7 @@ const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
 const { initializeDatabase, query } = require('./db');
+const PDFDocument = require('pdfkit');
 require('dotenv').config();
 
 const app = express();
@@ -24,7 +25,7 @@ const aiQuestionGenerating = new Map();
 
 // 미들웨어 설정
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' })); // PDF 생성 시 차트 이미지 전송을 위해 limit 증가
 
 // 환경변수 API
 app.get('/api/config', (req, res) => {
@@ -97,7 +98,8 @@ app.get('/api/discussions', async (req, res) => {
             let sql = `
                 SELECT
                     id, title, type, author, participants,
-                    created_at, expires_at, description
+                    created_at, expires_at, description,
+                    team1_name, team2_name, roles, is_private
                 FROM discussions
                 WHERE is_active = true AND expires_at > CURRENT_TIMESTAMP
             `;
@@ -183,7 +185,7 @@ app.get('/api/discussions/:id', async (req, res) => {
 // 새 토론방 생성
 app.post('/api/discussions', async (req, res) => {
     try {
-        const { title, type, author, description, duration, isPrivate, entryCode, password, team1Name, team2Name } = req.body;
+        const { title, type, author, description, duration, isPrivate, entryCode, password, team1Name, team2Name, roleList } = req.body;
 
         if (!title || !author) {
             return res.status(400).json({ error: '제목과 작성자는 필수입니다.' });
@@ -197,6 +199,13 @@ app.post('/api/discussions', async (req, res) => {
         const durationHours = duration || 24;
         const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000);
 
+        // 역할 목록 처리 (쉼표로 구분된 문자열 → JSON 배열)
+        let rolesJson = null;
+        if (type === '역할극' && roleList) {
+            const rolesArray = roleList.split(',').map(r => r.trim()).filter(r => r.length > 0);
+            rolesJson = JSON.stringify(rolesArray);
+        }
+
         let result;
 
         if (global.discussionsStore) {
@@ -208,18 +217,127 @@ app.post('/api/discussions', async (req, res) => {
         } else {
             // PostgreSQL 모드
             result = await query(
-                'INSERT INTO discussions (title, type, author, description, expires_at, is_private, entry_code, team1_name, team2_name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
-                [title, type || '자유', author, description || '', expiresAt, isPrivate || false, entryCode || null, team1Name || null, team2Name || null]
+                'INSERT INTO discussions (title, type, author, description, expires_at, is_private, entry_code, team1_name, team2_name, roles) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id',
+                [title, type || '자유', author, description || '', expiresAt, isPrivate || false, entryCode || null, team1Name || null, team2Name || null, rolesJson]
             );
         }
 
+        const discussionId = global.discussionsStore ? result[0].id : result[0].id;
+
+        // 역할극 모드인데 역할 목록이 없으면 자동으로 AI 역할 생성
+        if (type === '역할극' && !roleList) {
+            try {
+                console.log(`🎭 역할 모드 토론방 - AI 역할 자동 생성 시작 (ID: ${discussionId})`);
+
+                const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+                if (GEMINI_API_KEY) {
+                    // AI 역할 생성 프롬프트
+                    const prompt = `다음 토론 주제에 대해 토론에 참여할 수 있는 **8-10개의 전문적인 역할**을 생성해주세요:
+
+토론 주제: "${title}"
+
+요구사항:
+1. 역할은 반드시 **한국어**로 작성해주세요
+2. 각 역할은 토론 주제와 관련된 전문가여야 합니다 (예: 법학 교수, 응급의학과 의사, 심리학자, 경제학자, 환경운동가 등)
+3. 다양한 관점을 제시할 수 있도록 서로 다른 분야의 역할을 포함해주세요
+4. 역할 이름은 간결하고 명확해야 합니다 (2-6단어)
+5. 찬성/반대 양측 모두에서 선택할 수 있는 중립적인 역할들이어야 합니다
+
+JSON 형식으로 응답해주세요:
+{
+  "roles": ["역할1", "역할2", "역할3", ...]
+}`;
+
+                    const geminiResponse = await fetch(
+                        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{
+                                    parts: [{ text: prompt }]
+                                }],
+                                generationConfig: {
+                                    temperature: 0.8,
+                                    maxOutputTokens: 2000,
+                                    responseMimeType: "application/json"
+                                }
+                            })
+                        }
+                    );
+
+                    if (geminiResponse.ok) {
+                        const geminiData = await geminiResponse.json();
+                        const candidate = geminiData.candidates[0];
+                        const responseText = candidate.content.parts[0].text;
+                        const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/) || responseText.match(/\{[\s\S]*\}/);
+                        const rolesData = JSON.parse(jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : responseText);
+
+                        // roles 저장
+                        await query(
+                            'UPDATE discussions SET roles = $1 WHERE id = $2',
+                            [JSON.stringify(rolesData.roles), discussionId]
+                        );
+
+                        console.log(`✅ AI 역할 ${rolesData.roles.length}개 자동 생성 완료`);
+                    }
+                } else {
+                    console.log('⚠️ Gemini API 키가 없어 기본 역할 사용');
+                }
+            } catch (error) {
+                console.error('❌ AI 역할 자동 생성 실패 (토론방은 생성됨):', error);
+            }
+        }
+
         res.status(201).json({
-            id: global.discussionsStore ? result[0].id : result[0].id,
+            id: discussionId,
             message: isPrivate ? '비밀 토론방이 생성되었습니다.' : '토론방이 생성되었습니다.'
         });
     } catch (error) {
         console.error('토론방 생성 오류:', error);
         res.status(500).json({ error: '토론방을 생성할 수 없습니다.' });
+    }
+});
+
+// 토론방 수정
+app.put('/api/discussions/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { title, type, description, team1Name, team2Name, roleList } = req.body;
+
+        if (!title) {
+            return res.status(400).json({ error: '제목은 필수입니다.' });
+        }
+
+        // 역할 목록 처리 (쉼표로 구분된 문자열 → JSON 배열)
+        let rolesJson = null;
+        if (type === '역할극' && roleList) {
+            const rolesArray = roleList.split(',').map(r => r.trim()).filter(r => r.length > 0);
+            rolesJson = JSON.stringify(rolesArray);
+        }
+
+        if (global.discussionsStore) {
+            // SQLite 폴백 모드
+            const discussion = global.discussionsStore.find(d => d.id == id);
+            if (!discussion) {
+                return res.status(404).json({ error: '토론방을 찾을 수 없습니다.' });
+            }
+            discussion.title = title;
+            discussion.type = type || '자유';
+            discussion.description = description || '';
+        } else {
+            // PostgreSQL 모드
+            await query(
+                'UPDATE discussions SET title = $1, type = $2, description = $3, team1_name = $4, team2_name = $5, roles = $6 WHERE id = $7',
+                [title, type || '자유', description || '', team1Name || null, team2Name || null, rolesJson, id]
+            );
+        }
+
+        res.json({ message: '토론방이 수정되었습니다.' });
+    } catch (error) {
+        console.error('토론방 수정 오류:', error);
+        res.status(500).json({ error: '토론방을 수정할 수 없습니다.' });
     }
 });
 
@@ -663,6 +781,112 @@ app.get('/api/discussions/:id/questions', async (req, res) => {
     } catch (error) {
         console.error('AI 질문 조회 오류:', error);
         res.status(500).json({ error: 'AI 질문을 조회할 수 없습니다.' });
+    }
+});
+
+// AI 역할 생성 API (역할 모드용)
+app.post('/api/discussions/:id/generate-roles', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { title } = req.body;
+        console.log(`🎭 AI 역할 생성 요청: 토론방 ID ${id}, 주제: "${title}"`);
+
+        const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+        if (!GEMINI_API_KEY) {
+            console.error('❌ Gemini API 키가 설정되지 않음');
+            return res.status(500).json({ error: 'Gemini API 키가 설정되지 않았습니다.' });
+        }
+
+        // Gemini API 호출을 위한 프롬프트 생성
+        const prompt = `다음 토론 주제에 대해 토론에 참여할 수 있는 **8-10개의 전문적인 역할**을 생성해주세요:
+
+토론 주제: "${title}"
+
+요구사항:
+1. 역할은 반드시 **한국어**로 작성해주세요
+2. 각 역할은 토론 주제와 관련된 전문가여야 합니다 (예: 법학 교수, 응급의학과 의사, 심리학자, 경제학자, 환경운동가 등)
+3. 다양한 관점을 제시할 수 있도록 서로 다른 분야의 역할을 포함해주세요
+4. 역할 이름은 간결하고 명확해야 합니다 (2-6단어)
+5. 찬성/반대 양측 모두에서 선택할 수 있는 중립적인 역할들이어야 합니다
+
+JSON 형식으로 응답해주세요:
+{
+  "roles": ["역할1", "역할2", "역할3", ...]
+}`;
+
+        // Gemini API 호출
+        console.log('🌐 Gemini API 호출 시작...');
+        const geminiResponse = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{ text: prompt }]
+                    }],
+                    generationConfig: {
+                        temperature: 0.8,
+                        maxOutputTokens: 2000,
+                        responseMimeType: "application/json"
+                    }
+                })
+            }
+        );
+
+        if (!geminiResponse.ok) {
+            const errorText = await geminiResponse.text();
+            console.error(`❌ Gemini API 오류: ${geminiResponse.status}`, errorText);
+            throw new Error(`Gemini API 오류: ${geminiResponse.status}`);
+        }
+
+        console.log('✅ Gemini API 응답 수신 성공');
+
+        const geminiData = await geminiResponse.json();
+
+        // Gemini 응답 구조 확인
+        if (!geminiData.candidates || !geminiData.candidates[0]) {
+            console.error('❌ Gemini 응답 구조 오류:', geminiData);
+            throw new Error('Gemini API 응답에 candidates가 없습니다.');
+        }
+
+        const candidate = geminiData.candidates[0];
+
+        if (!candidate.content || !candidate.content.parts || !candidate.content.parts[0]) {
+            console.error('❌ Gemini 응답에 텍스트가 없습니다:', candidate);
+            throw new Error(`Gemini API 응답 오류: ${candidate.finishReason || 'UNKNOWN'}`);
+        }
+
+        const responseText = candidate.content.parts[0].text;
+        console.log('📝 Gemini 응답 텍스트:', responseText.substring(0, 200) + '...');
+
+        // JSON 파싱
+        const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/) || responseText.match(/\{[\s\S]*\}/);
+        const rolesData = JSON.parse(jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : responseText);
+        console.log('✅ JSON 파싱 성공:', rolesData.roles.length + '개 역할');
+
+        // discussions 테이블에 roles 저장
+        await query(
+            'UPDATE discussions SET roles = $1 WHERE id = $2',
+            [JSON.stringify(rolesData.roles), id]
+        );
+
+        console.log(`✨ AI 역할 ${rolesData.roles.length}개 생성 완료 (토론방 ${id})`);
+
+        res.json({
+            success: true,
+            roles: rolesData.roles,
+            message: `${rolesData.roles.length}개의 역할이 생성되었습니다.`
+        });
+
+    } catch (error) {
+        console.error('❌ AI 역할 생성 오류:', error);
+        console.error('❌ 에러 스택:', error.stack);
+        res.status(500).json({
+            error: 'AI 역할 생성에 실패했습니다.',
+            details: error.message
+        });
     }
 });
 
@@ -1912,6 +2136,825 @@ ${messagesText}
             error: 'AI 흐름 분석 중 오류가 발생했습니다.',
             details: error.message
         });
+    }
+});
+
+// ==========================================
+// PDF 생성 (PDFKit 서버 사이드)
+// ==========================================
+
+// PDF 상수 정의
+const PAGE_WIDTH = 595.28;  // A4 width in points
+const PAGE_HEIGHT = 841.89; // A4 height in points
+const MARGIN_LEFT = 50;
+const MARGIN_RIGHT = 50;
+const MARGIN_TOP = 50;
+const MARGIN_BOTTOM = 50;
+const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
+
+// 안전하게 텍스트 추가하는 헬퍼 함수
+function addTextSafely(doc, text, options = {}) {
+    const textHeight = doc.heightOfString(text, {
+        width: CONTENT_WIDTH,
+        ...options
+    });
+
+    // 페이지 넘김 체크
+    if (doc.y + textHeight > PAGE_HEIGHT - MARGIN_BOTTOM) {
+        doc.addPage();
+    }
+
+    doc.text(text, {
+        width: CONTENT_WIDTH,
+        continued: false,
+        lineBreak: true,
+        ...options
+    });
+}
+
+// 제목 추가
+function addTitle(doc, title) {
+    doc.fontSize(20).font('Malgun', 'bold');
+    addTextSafely(doc, title);
+    doc.moveDown(0.5);
+    doc.fontSize(12).font('Malgun');
+}
+
+// 섹션 제목 추가
+function addSectionTitle(doc, title) {
+    doc.moveDown();
+    doc.fontSize(16).font('Malgun', 'bold');
+    addTextSafely(doc, title);
+    doc.moveDown(0.3);
+    doc.fontSize(12).font('Malgun');
+}
+
+// 본문 텍스트 추가
+function addBodyText(doc, text) {
+    doc.fontSize(12).font('Malgun');
+
+    // 문자열이 아닌 경우 변환
+    if (typeof text !== 'string') {
+        if (text === null || text === undefined) {
+            return;
+        }
+        text = String(text);
+    }
+
+    // 문단 단위로 분할
+    const paragraphs = text.split('\n\n');
+
+    paragraphs.forEach((paragraph, index) => {
+        if (paragraph.trim()) {
+            addTextSafely(doc, paragraph.trim());
+            if (index < paragraphs.length - 1) {
+                doc.moveDown(0.5);
+            }
+        }
+    });
+}
+
+// 리스트 항목 추가
+function addListItem(doc, text, indent = 0) {
+    const bullet = '• ';
+    const indentSpace = indent * 20;
+
+    doc.fontSize(12).font('Malgun');
+
+    const itemHeight = doc.heightOfString(bullet + text, {
+        width: CONTENT_WIDTH - indentSpace - 15,
+        indent: indentSpace + 15
+    });
+
+    if (doc.y + itemHeight > PAGE_HEIGHT - MARGIN_BOTTOM) {
+        doc.addPage();
+    }
+
+    doc.text(bullet + text, {
+        width: CONTENT_WIDTH - indentSpace,
+        indent: indentSpace + 15,
+        continued: false,
+        lineBreak: true
+    });
+
+    doc.moveDown(0.3);
+}
+
+// PDF 콘텐츠 생성
+function addPDFContent(doc, verdictData, discussionTitle) {
+    // 제목
+    addTitle(doc, 'AI 판결문');
+
+    // 서론 - 개요
+    if (verdictData.overview) {
+        addSectionTitle(doc, '📖 서론');
+        doc.fontSize(14).font('Malgun', 'bold');
+        addTextSafely(doc, '토론 개요');
+        doc.fontSize(12).font('Malgun');
+        doc.moveDown(0.3);
+        addBodyText(doc, verdictData.overview);
+    }
+
+    // 서론 - 배경
+    if (verdictData.background) {
+        doc.moveDown(0.5);
+        doc.fontSize(14).font('Malgun', 'bold');
+        addTextSafely(doc, '논의 배경');
+        doc.fontSize(12).font('Malgun');
+        doc.moveDown(0.3);
+        addBodyText(doc, verdictData.background);
+    }
+
+    // 서론 - 주요 쟁점
+    if (verdictData.issues && verdictData.issues.length > 0) {
+        doc.moveDown(0.5);
+        doc.fontSize(14).font('Malgun', 'bold');
+        addTextSafely(doc, '주요 쟁점');
+        doc.fontSize(12).font('Malgun');
+        doc.moveDown(0.3);
+        verdictData.issues.forEach((issue, index) => {
+            addListItem(doc, `${index + 1}. ${issue}`);
+        });
+    }
+
+    // 본론 - 쟁점별 분석
+    if (verdictData.main_body && verdictData.main_body.length > 0) {
+        addSectionTitle(doc, '📄 본론');
+
+        verdictData.main_body.forEach((issue, index) => {
+            // 쟁점 제목
+            doc.fontSize(15).font('Malgun', 'bold');
+            addTextSafely(doc, issue.issue_title);
+            doc.fontSize(12).font('Malgun');
+            doc.moveDown(0.5);
+
+            // 주장 요약
+            if (issue.arguments_summary) {
+                doc.fontSize(14).font('Malgun', 'bold');
+                addTextSafely(doc, '주장 요약');
+                doc.fontSize(12).font('Malgun');
+                doc.moveDown(0.3);
+
+                // 찬성 측
+                if (issue.arguments_summary.pros) {
+                    doc.fontSize(12).font('Malgun', 'bold');
+                    addTextSafely(doc, '찬성:');
+                    doc.font('Malgun');
+                    doc.moveDown(0.2);
+                    addBodyText(doc, issue.arguments_summary.pros);
+                    doc.moveDown(0.3);
+                }
+
+                // 반대 측
+                if (issue.arguments_summary.cons) {
+                    doc.fontSize(12).font('Malgun', 'bold');
+                    addTextSafely(doc, '반대:');
+                    doc.font('Malgun');
+                    doc.moveDown(0.2);
+                    addBodyText(doc, issue.arguments_summary.cons);
+                    doc.moveDown(0.3);
+                }
+
+                // AI 의견
+                if (issue.arguments_summary.ai) {
+                    doc.fontSize(12).font('Malgun', 'bold');
+                    addTextSafely(doc, 'AI 의견:');
+                    doc.font('Malgun');
+                    doc.moveDown(0.2);
+                    addBodyText(doc, issue.arguments_summary.ai);
+                    doc.moveDown(0.5);
+                }
+            }
+
+            // 분석
+            if (issue.analysis) {
+                doc.fontSize(14).font('Malgun', 'bold');
+                addTextSafely(doc, '분석');
+                doc.fontSize(12).font('Malgun');
+                doc.moveDown(0.3);
+                addBodyText(doc, issue.analysis);
+                doc.moveDown(0.5);
+            }
+        });
+    }
+
+    // 특이점 및 인사이트
+    if (verdictData.insights) {
+        doc.fontSize(14).font('Malgun', 'bold');
+        addTextSafely(doc, '특이점 및 인사이트');
+        doc.fontSize(12).font('Malgun');
+        doc.moveDown(0.3);
+        addBodyText(doc, verdictData.insights);
+    }
+
+    // 결론
+    addSectionTitle(doc, '⚖ 결론');
+
+    // 토론 결과 요약
+    if (verdictData.summary) {
+        doc.fontSize(14).font('Malgun', 'bold');
+        addTextSafely(doc, '토론 결과 요약');
+        doc.fontSize(12).font('Malgun');
+        doc.moveDown(0.3);
+        addBodyText(doc, verdictData.summary);
+        doc.moveDown(0.5);
+    }
+
+    // 미해결 과제 및 제언
+    if (verdictData.recommendations) {
+        doc.fontSize(14).font('Malgun', 'bold');
+        addTextSafely(doc, '미해결 과제 및 제언');
+        doc.fontSize(12).font('Malgun');
+        doc.moveDown(0.3);
+        addBodyText(doc, verdictData.recommendations);
+        doc.moveDown(0.5);
+    }
+
+    // 토론의 의의
+    if (verdictData.significance) {
+        doc.fontSize(14).font('Malgun', 'bold');
+        addTextSafely(doc, '토론의 의의');
+        doc.fontSize(12).font('Malgun');
+        doc.moveDown(0.3);
+        addBodyText(doc, verdictData.significance);
+    }
+
+    // 토론 주제 및 날짜 (하단)
+    doc.moveDown(1);
+    doc.fontSize(10).fillColor('#666666');
+    addTextSafely(doc, `토론 주제: ${discussionTitle}`);
+    addTextSafely(doc, `생성일: ${new Date().toLocaleDateString('ko-KR')}`);
+    doc.fillColor('#000000');
+}
+
+// PDF 생성 함수
+async function generateVerdictPDF(verdictData, discussionTitle) {
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({
+            size: 'A4',
+            margins: {
+                top: MARGIN_TOP,
+                bottom: MARGIN_BOTTOM,
+                left: MARGIN_LEFT,
+                right: MARGIN_RIGHT
+            },
+            bufferPages: true
+        });
+
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+
+        try {
+            // 한글 폰트 등록
+            const fontPath = path.join(__dirname, 'fonts', 'malgun.ttf');
+            const fontBoldPath = path.join(__dirname, 'fonts', 'malgunbd.ttf');
+
+            doc.registerFont('Malgun', fontPath);
+            doc.registerFont('Malgun-Bold', fontBoldPath);
+            doc.font('Malgun');
+
+            // PDF 내용 생성
+            addPDFContent(doc, verdictData, discussionTitle);
+
+            doc.end();
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// 테스트 라우트
+app.get('/api/test-pdf-route', (req, res) => {
+    res.json({ status: 'PDF route is working!' });
+});
+
+// PDF 생성 API 엔드포인트
+app.post('/api/discussions/:id/generate-verdict-pdf', async (req, res) => {
+    try {
+        console.log('📄 판결문 PDF 생성 요청 받음');
+        const discussionId = req.params.id;
+        const { verdictData, discussionTitle } = req.body;
+
+        if (!verdictData) {
+            return res.status(400).json({ error: '판결문 데이터가 필요합니다.' });
+        }
+
+        // PDF 생성
+        const pdfBuffer = await generateVerdictPDF(verdictData, discussionTitle || '토론');
+
+        // 응답 헤더 설정
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=verdict-${discussionId}.pdf`);
+
+        res.send(pdfBuffer);
+        console.log('✅ 판결문 PDF 생성 완료');
+
+    } catch (error) {
+        console.error('❌ PDF 생성 오류:', error);
+        res.status(500).json({ error: 'PDF 생성 실패', details: error.message });
+    }
+});
+
+// 종합분석 PDF 생성 함수
+async function generateAnalysisPDF(analysisData, chartImage, discussionTitle) {
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({
+            size: 'A4',
+            margins: {
+                top: MARGIN_TOP,
+                bottom: MARGIN_BOTTOM,
+                left: MARGIN_LEFT,
+                right: MARGIN_RIGHT
+            },
+            bufferPages: true
+        });
+
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+
+        try {
+            // 한글 폰트 등록
+            const fontPath = path.join(__dirname, 'fonts', 'malgun.ttf');
+            const fontBoldPath = path.join(__dirname, 'fonts', 'malgunbd.ttf');
+
+            doc.registerFont('Malgun', fontPath);
+            doc.registerFont('Malgun-Bold', fontBoldPath);
+            doc.font('Malgun');
+
+            // 제목
+            addTitle(doc, 'AI 최종 판정');
+
+            // 승자 배지
+            if (analysisData.winner) {
+                const winnerText = analysisData.winner === 'pros' ? '찬성 승리' : '반대 승리';
+                doc.fontSize(16).font('Malgun-Bold');
+                if (analysisData.winner === 'cons') {
+                    doc.fillColor('#ef4444');
+                } else {
+                    doc.fillColor('#10b981');
+                }
+                addTextSafely(doc, winnerText);
+                doc.fillColor('#000000');
+                doc.moveDown(0.5);
+            }
+
+            // 판정문
+            if (analysisData.verdict) {
+                doc.fontSize(12).font('Malgun');
+                addBodyText(doc, analysisData.verdict);
+                doc.moveDown(1);
+            }
+
+            // 팀별 종합 분석
+            if (analysisData.team_analysis) {
+                addSectionTitle(doc, '팀별 종합 분석');
+
+                // 찬성 팀
+                if (analysisData.team_analysis.pros) {
+                    doc.fontSize(14).font('Malgun-Bold').fillColor('#10b981');
+                    addTextSafely(doc, '찬성 팀');
+                    doc.fillColor('#000000').fontSize(12).font('Malgun');
+                    doc.moveDown(0.3);
+
+                    if (analysisData.team_analysis.pros.strategy) {
+                        doc.font('Malgun-Bold');
+                        addTextSafely(doc, '전략 분석:');
+                        doc.font('Malgun');
+                        addBodyText(doc, analysisData.team_analysis.pros.strategy);
+                        doc.moveDown(0.5);
+                    }
+
+                    if (analysisData.team_analysis.pros.arguments) {
+                        doc.font('Malgun-Bold');
+                        addTextSafely(doc, '핵심 논거:');
+                        doc.font('Malgun');
+                        addBodyText(doc, analysisData.team_analysis.pros.arguments);
+                        doc.moveDown(1);
+                    }
+                }
+
+                // 반대 팀
+                if (analysisData.team_analysis.cons) {
+                    doc.fontSize(14).font('Malgun-Bold').fillColor('#ef4444');
+                    addTextSafely(doc, '반대 팀');
+                    doc.fillColor('#000000').fontSize(12).font('Malgun');
+                    doc.moveDown(0.3);
+
+                    if (analysisData.team_analysis.cons.strategy) {
+                        doc.font('Malgun-Bold');
+                        addTextSafely(doc, '전략 분석:');
+                        doc.font('Malgun');
+                        addBodyText(doc, analysisData.team_analysis.cons.strategy);
+                        doc.moveDown(0.5);
+                    }
+
+                    if (analysisData.team_analysis.cons.arguments) {
+                        doc.font('Malgun-Bold');
+                        addTextSafely(doc, '핵심 논거:');
+                        doc.font('Malgun');
+                        addBodyText(doc, analysisData.team_analysis.cons.arguments);
+                        doc.moveDown(1);
+                    }
+                }
+            }
+
+            // 주요 발언
+            if (analysisData.key_statements && analysisData.key_statements.length > 0) {
+                addSectionTitle(doc, '주요 발언');
+
+                // 찬성 팀 주요 발언
+                const prosStatement = analysisData.key_statements.find(s => s.team === 'pros');
+                if (prosStatement && prosStatement.statement) {
+                    doc.fontSize(12).font('Malgun-Bold').fillColor('#10b981');
+                    addTextSafely(doc, '[찬]');
+                    doc.fillColor('#000000').font('Malgun');
+                    doc.moveDown(0.3);
+                    addBodyText(doc, prosStatement.statement);
+                    doc.moveDown(0.7);
+                }
+
+                // 반대 팀 주요 발언
+                const consStatement = analysisData.key_statements.find(s => s.team === 'cons');
+                if (consStatement && consStatement.statement) {
+                    doc.fontSize(12).font('Malgun-Bold').fillColor('#ef4444');
+                    addTextSafely(doc, '[반]');
+                    doc.fillColor('#000000').font('Malgun');
+                    doc.moveDown(0.3);
+                    addBodyText(doc, consStatement.statement);
+                    doc.moveDown(1);
+                }
+            }
+
+            // 전체 참여자 개별 분석
+            if (analysisData.participant_analysis && analysisData.participant_analysis.length > 0) {
+                addSectionTitle(doc, '전체 참여자 개별 분석');
+
+                analysisData.participant_analysis.forEach((participant, index) => {
+                    // 참여자 이름과 팀
+                    doc.fontSize(13).font('Malgun-Bold');
+                    const teamLabel = participant.team === 'pros' ? '찬성 팀' :
+                                      participant.team === 'cons' ? '반대 팀' : '중립';
+                    const teamColor = participant.team === 'pros' ? '#10b981' :
+                                      participant.team === 'cons' ? '#ef4444' : '#666666';
+
+                    addTextSafely(doc, participant.name || '익명');
+                    doc.fontSize(11).fillColor(teamColor);
+                    addTextSafely(doc, teamLabel);
+                    doc.fillColor('#000000').fontSize(12).font('Malgun');
+                    doc.moveDown(0.3);
+
+                    // 개별 분석
+                    if (participant.analysis) {
+                        doc.font('Malgun-Bold');
+                        addTextSafely(doc, '개별 분석:');
+                        doc.font('Malgun');
+                        addBodyText(doc, participant.analysis);
+                        doc.moveDown(0.5);
+                    }
+
+                    // 핵심 기여 발언 (노란색 박스 효과)
+                    if (participant.key_contribution) {
+                        doc.font('Malgun-Bold');
+                        addTextSafely(doc, '핵심 기여 발언:');
+                        doc.font('Malgun').fillColor('#856404'); // 노란색 배경에 어울리는 진한 텍스트
+                        addBodyText(doc, `"${participant.key_contribution}"`);
+                        doc.fillColor('#000000');
+                        doc.moveDown(0.7);
+                    }
+
+                    // 참여자 사이 간격
+                    if (index < analysisData.participant_analysis.length - 1) {
+                        doc.moveDown(0.5);
+                    }
+                });
+
+                doc.moveDown(1);
+            }
+
+            // 토론 주제 및 날짜 (하단)
+            doc.fontSize(10).fillColor('#666666');
+            addTextSafely(doc, `토론 주제: ${discussionTitle}`);
+            addTextSafely(doc, `생성일: ${new Date().toLocaleDateString('ko-KR')}`);
+
+            doc.end();
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// 흐름시각화 PDF 생성 함수
+async function generateFlowPDF(flowData, chartImages, discussionTitle) {
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({
+            size: 'A4',
+            margins: {
+                top: MARGIN_TOP,
+                bottom: MARGIN_BOTTOM,
+                left: MARGIN_LEFT,
+                right: MARGIN_RIGHT
+            },
+            bufferPages: true
+        });
+
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+
+        try {
+            // 한글 폰트 등록
+            const fontPath = path.join(__dirname, 'fonts', 'malgun.ttf');
+            const fontBoldPath = path.join(__dirname, 'fonts', 'malgunbd.ttf');
+
+            doc.registerFont('Malgun', fontPath);
+            doc.registerFont('Malgun-Bold', fontBoldPath);
+            doc.font('Malgun');
+
+            // 제목
+            addTitle(doc, '토론 흐름 시각화 보고서');
+
+            // 1. 토론 타임라인
+            if (flowData.timeline && flowData.timeline.length > 0) {
+                addSectionTitle(doc, '토론 타임라인');
+
+                flowData.timeline.forEach((moment, index) => {
+                    doc.fontSize(11).font('Malgun-Bold').fillColor('#3b82f6');
+                    addTextSafely(doc, moment.time || `시간 ${index + 1}`);
+
+                    doc.fontSize(12).font('Malgun-Bold').fillColor('#000000');
+                    addTextSafely(doc, moment.title || '제목 없음');
+
+                    doc.fontSize(11).font('Malgun').fillColor('#374151');
+                    addBodyText(doc, moment.description || '');
+                    doc.fillColor('#000000');
+
+                    doc.moveDown(0.7);
+                });
+
+                doc.moveDown(0.5);
+            }
+
+            // 2. 참여자별 발언 비중
+            if (flowData.participant_stats && flowData.participant_stats.length > 0) {
+                addSectionTitle(doc, '참여자별 발언 비중');
+
+                // 차트 이미지
+                if (chartImages.participantChart) {
+                    try {
+                        const imgBuffer = Buffer.from(chartImages.participantChart.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+                        const imgWidth = 250;
+                        const imgHeight = 180;
+
+                        if (doc.y + imgHeight > PAGE_HEIGHT - MARGIN_BOTTOM) {
+                            doc.addPage();
+                        }
+
+                        doc.image(imgBuffer, (PAGE_WIDTH - imgWidth) / 2, doc.y, {
+                            width: imgWidth,
+                            height: imgHeight
+                        });
+                        doc.moveDown(imgHeight / 12 + 1);
+                    } catch (error) {
+                        console.error('참여자 차트 이미지 삽입 오류:', error);
+                    }
+                }
+
+                // 상세 통계 표
+                doc.fontSize(11).font('Malgun-Bold');
+                addTextSafely(doc, '상세 통계:');
+                doc.fontSize(10).font('Malgun');
+                doc.moveDown(0.3);
+
+                const totalCount = flowData.participant_stats.reduce((sum, p) => sum + p.count, 0);
+                flowData.participant_stats.forEach(participant => {
+                    const percentage = ((participant.count / totalCount) * 100).toFixed(1);
+                    const roleColor = participant.role === '찬성' ? '#10b981' :
+                                      participant.role === '반대' ? '#ef4444' : '#6b7280';
+
+                    doc.fillColor(roleColor);
+                    const statText = `${participant.name} (${participant.role}): ${participant.count}회 (${percentage}%)`;
+                    addTextSafely(doc, statText);
+                    doc.fillColor('#000000');
+                });
+
+                doc.moveDown(1);
+            }
+
+            // 3. 팀별 발언 비중
+            if (flowData.participant_stats && flowData.participant_stats.length > 0) {
+                addSectionTitle(doc, '팀별 발언 비중');
+
+                // 차트 이미지
+                if (chartImages.teamChart) {
+                    try {
+                        const imgBuffer = Buffer.from(chartImages.teamChart.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+                        const imgWidth = 250;
+                        const imgHeight = 180;
+
+                        if (doc.y + imgHeight > PAGE_HEIGHT - MARGIN_BOTTOM) {
+                            doc.addPage();
+                        }
+
+                        doc.image(imgBuffer, (PAGE_WIDTH - imgWidth) / 2, doc.y, {
+                            width: imgWidth,
+                            height: imgHeight
+                        });
+                        doc.moveDown(imgHeight / 12 + 1);
+                    } catch (error) {
+                        console.error('팀 차트 이미지 삽입 오류:', error);
+                    }
+                }
+
+                // 팀별 통계 계산
+                doc.fontSize(11).font('Malgun-Bold');
+                addTextSafely(doc, '팀별 평균 발언 수:');
+                doc.fontSize(10).font('Malgun');
+                doc.moveDown(0.3);
+
+                const teamData = {};
+                flowData.participant_stats.forEach(p => {
+                    if (!teamData[p.role]) {
+                        teamData[p.role] = { count: 0, members: 0 };
+                    }
+                    teamData[p.role].count += p.count;
+                    teamData[p.role].members += 1;
+                });
+
+                Object.keys(teamData).forEach(team => {
+                    const avg = (teamData[team].count / teamData[team].members).toFixed(1);
+                    const teamColor = team === '찬성' ? '#10b981' : team === '반대' ? '#ef4444' : '#6b7280';
+
+                    doc.fillColor(teamColor);
+                    addTextSafely(doc, `${team}: 평균 ${avg}회 (총 ${teamData[team].count}회 / ${teamData[team].members}명)`);
+                    doc.fillColor('#000000');
+                });
+
+                doc.moveDown(1);
+            }
+
+            // 4. 참여자 상호작용
+            if (chartImages.interactionChart) {
+                addSectionTitle(doc, '참여자 상호작용 분석');
+
+                try {
+                    const imgBuffer = Buffer.from(chartImages.interactionChart.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+                    const imgWidth = 280;
+                    const imgHeight = 200;
+
+                    if (doc.y + imgHeight > PAGE_HEIGHT - MARGIN_BOTTOM) {
+                        doc.addPage();
+                    }
+
+                    doc.image(imgBuffer, (PAGE_WIDTH - imgWidth) / 2, doc.y, {
+                        width: imgWidth,
+                        height: imgHeight
+                    });
+                    doc.moveDown(imgHeight / 12 + 1);
+                } catch (error) {
+                    console.error('상호작용 차트 이미지 삽입 오류:', error);
+                }
+
+                doc.fontSize(10).font('Malgun').fillColor('#666666');
+                addTextSafely(doc, '※ 상위 5명의 참여자 상호작용 패턴을 6각형 레이더 차트로 표현했습니다.');
+                doc.fillColor('#000000');
+                doc.moveDown(1);
+            }
+
+            // 5. 토론 흐름 트렌드
+            if (chartImages.trendChart) {
+                addSectionTitle(doc, '토론 흐름 트렌드');
+
+                try {
+                    const imgBuffer = Buffer.from(chartImages.trendChart.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+                    const imgWidth = 300;
+                    const imgHeight = 180;
+
+                    if (doc.y + imgHeight > PAGE_HEIGHT - MARGIN_BOTTOM) {
+                        doc.addPage();
+                    }
+
+                    doc.image(imgBuffer, (PAGE_WIDTH - imgWidth) / 2, doc.y, {
+                        width: imgWidth,
+                        height: imgHeight
+                    });
+                    doc.moveDown(imgHeight / 12 + 1);
+                } catch (error) {
+                    console.error('트렌드 차트 이미지 삽입 오류:', error);
+                }
+
+                doc.fontSize(10).font('Malgun').fillColor('#666666');
+                addTextSafely(doc, '※ 시간대별 찬성팀과 반대팀의 발언 활동 추이를 나타냅니다.');
+                doc.fillColor('#000000');
+                doc.moveDown(1);
+            }
+
+            // 6. 핵심 키워드 트렌드
+            if (chartImages.keywordChart) {
+                addSectionTitle(doc, '핵심 키워드 트렌드');
+
+                try {
+                    const imgBuffer = Buffer.from(chartImages.keywordChart.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+                    const imgWidth = 300;
+                    const imgHeight = 180;
+
+                    if (doc.y + imgHeight > PAGE_HEIGHT - MARGIN_BOTTOM) {
+                        doc.addPage();
+                    }
+
+                    doc.image(imgBuffer, (PAGE_WIDTH - imgWidth) / 2, doc.y, {
+                        width: imgWidth,
+                        height: imgHeight
+                    });
+                    doc.moveDown(imgHeight / 12 + 1);
+                } catch (error) {
+                    console.error('키워드 차트 이미지 삽입 오류:', error);
+                }
+
+                // 키워드 목록
+                if (flowData.keyword_data && flowData.keyword_data.keywords) {
+                    doc.fontSize(11).font('Malgun-Bold');
+                    addTextSafely(doc, '주요 키워드:');
+                    doc.fontSize(10).font('Malgun');
+                    doc.moveDown(0.3);
+
+                    const keywordList = flowData.keyword_data.keywords.join(', ');
+                    addBodyText(doc, keywordList);
+                    doc.moveDown(1);
+                }
+            }
+
+            // 토론 주제 및 날짜 (하단)
+            doc.fontSize(10).fillColor('#666666');
+            addTextSafely(doc, `토론 주제: ${discussionTitle}`);
+            addTextSafely(doc, `생성일: ${new Date().toLocaleDateString('ko-KR')}`);
+
+            doc.end();
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// 종합분석 PDF API 엔드포인트
+app.post('/api/discussions/:id/generate-analysis-pdf', async (req, res) => {
+    try {
+        console.log('📊 종합분석 PDF 생성 요청 받음');
+        const discussionId = req.params.id;
+        const { analysisData, chartImage, discussionTitle } = req.body;
+
+        if (!analysisData) {
+            return res.status(400).json({ error: '종합분석 데이터가 필요합니다.' });
+        }
+
+        // PDF 생성
+        const pdfBuffer = await generateAnalysisPDF(analysisData, chartImage, discussionTitle || '토론');
+
+        // 응답 헤더 설정
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=analysis-${discussionId}.pdf`);
+
+        res.send(pdfBuffer);
+        console.log('✅ 종합분석 PDF 생성 완료');
+
+    } catch (error) {
+        console.error('❌ 종합분석 PDF 생성 오류:', error);
+        res.status(500).json({ error: 'PDF 생성 실패', details: error.message });
+    }
+});
+
+// 흐름시각화 PDF API 엔드포인트
+app.post('/api/discussions/:id/generate-flow-pdf', async (req, res) => {
+    try {
+        console.log('📊 흐름시각화 PDF 생성 요청 받음');
+        const discussionId = req.params.id;
+        const { flowData, chartImages, discussionTitle } = req.body;
+
+        if (!flowData) {
+            return res.status(400).json({ error: '흐름 분석 데이터가 필요합니다.' });
+        }
+
+        if (!chartImages) {
+            return res.status(400).json({ error: '차트 이미지가 필요합니다.' });
+        }
+
+        // PDF 생성
+        const pdfBuffer = await generateFlowPDF(flowData, chartImages, discussionTitle || '토론');
+
+        // 응답 헤더 설정
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=flow-${discussionId}.pdf`);
+
+        res.send(pdfBuffer);
+        console.log('✅ 흐름시각화 PDF 생성 완료');
+
+    } catch (error) {
+        console.error('❌ 흐름시각화 PDF 생성 오류:', error);
+        res.status(500).json({ error: 'PDF 생성 실패', details: error.message });
     }
 });
 

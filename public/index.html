@@ -156,15 +156,23 @@
                     <label for="discussionDescription">토론 상황</label>
                     <textarea id="discussionDescription" class="form-textarea"
                               placeholder="토론의 배경, 맥락, 또는 추가 정보를 입력하세요..."
-                              rows="8"></textarea>
+                              rows="5"></textarea>
                 </div>
 
                 <!-- 역할 목록 (역할극일 때만 표시) -->
                 <div class="role-section" id="roleSection" style="display: none;">
                     <div class="form-group">
                         <label>역할 목록</label>
-                        <input type="text" id="roleList" class="form-input"
-                               placeholder="쉼표(,)로 역할을 구분하여 입력하세요. 예: 교사, 학부모, 학생, AI 개발자">
+                        <div style="display: flex; gap: 8px; align-items: flex-end;">
+                            <input type="text" id="roleList" class="form-input" style="flex: 1;"
+                                   placeholder="쉼표(,)로 역할을 구분하여 입력하세요. 예: 교사, 학부모, 학생, AI 개발자">
+                            <button type="button" class="ai-recommend-btn" onclick="generateAIRoles()" style="white-space: nowrap; flex-shrink: 0;">
+                                <span class="sparkle">✨</span> AI 역할 생성
+                            </button>
+                        </div>
+                        <small style="color: #666; font-size: 0.85em; margin-top: 4px; display: block;">
+                            AI가 생성한 역할을 수정할 수 있습니다
+                        </small>
                     </div>
                 </div>
 
