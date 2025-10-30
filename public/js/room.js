@@ -1726,7 +1726,7 @@ function renderKeywordChartFromAI(keywordData) {
             },
             plugins: {
                 legend: {
-                    position: 'left',  // 왼쪽에 키워드 목록 표시
+                    position: 'bottom',  // 하단에 키워드 목록 표시
                     labels: {
                         padding: 15,
                         font: {
