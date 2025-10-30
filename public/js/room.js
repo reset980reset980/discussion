@@ -263,6 +263,12 @@ async function loadDiscussionInfoForJoin() {
                 const team1Name = data.team1_name || '찬성';
                 const team2Name = data.team2_name || '반대';
 
+                // 참여자 패널의 팀 라벨 업데이트
+                const team1Label = document.getElementById('team1Label');
+                const team2Label = document.getElementById('team2Label');
+                if (team1Label) team1Label.textContent = team1Name;
+                if (team2Label) team2Label.textContent = team2Name;
+
                 roleRadioGroup.innerHTML = `
                     <div class="join-modal-radio-item">
                         <input type="radio" id="roleTeam1" name="userRole" value="${team1Name}" checked>
@@ -640,15 +646,16 @@ function updateParticipantsList(participants) {
     document.getElementById('participantBadge').textContent = participants.length;
     document.getElementById('onlineCount').textContent = `${onlineCount}명 온라인`;
 
-    // 역할별 통계 (찬성/반대/중립)
-    const prosCount = participants.filter(p => p.user_role === '찬성').length;
-    const consCount = participants.filter(p => p.user_role === '반대').length;
-    const neutralCount = participants.filter(p => !['찬성', '반대'].includes(p.user_role)).length;
+    // 역할별 통계 (팀1/팀2만 - 실제 팀명 기준)
+    const team1Name = discussionInfo?.team1_name || '찬성';
+    const team2Name = discussionInfo?.team2_name || '반대';
+
+    const team1Count = participants.filter(p => p.user_role === team1Name).length;
+    const team2Count = participants.filter(p => p.user_role === team2Name).length;
 
     if (document.getElementById('prosCount')) {
-        document.getElementById('prosCount').textContent = prosCount;
-        document.getElementById('consCount').textContent = consCount;
-        document.getElementById('neutralCount').textContent = neutralCount;
+        document.getElementById('prosCount').textContent = team1Count;
+        document.getElementById('consCount').textContent = team2Count;
     }
 }
 
