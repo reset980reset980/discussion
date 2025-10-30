@@ -1198,6 +1198,79 @@ if (downloadPdfBtn2) {
     });
 }
 
+// 흐름 시각화 PDF 다운로드 버튼
+const downloadFlowPdfBtn = document.getElementById('downloadFlowPdfBtn');
+if (downloadFlowPdfBtn) {
+    downloadFlowPdfBtn.addEventListener('click', async () => {
+        try {
+            console.log('📄 흐름 시각화 PDF 생성 시작...');
+
+            // 흐름 분석 결과 패널 가져오기
+            const flowResultView = document.getElementById('flow-result-view');
+            if (!flowResultView || flowResultView.style.display === 'none') {
+                alert('흐름 분석 결과가 표시되지 않았습니다.');
+                return;
+            }
+
+            // html2canvas로 캡처
+            console.log('📸 화면 캡처 중...');
+            const canvas = await html2canvas(flowResultView, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            });
+
+            console.log('🖼️ 캔버스 생성 완료:', canvas.width, 'x', canvas.height);
+
+            // jsPDF 인스턴스 생성
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            // A4 크기 (mm)
+            const pdfWidth = 210;
+            const pdfHeight = 297;
+
+            // 캔버스를 이미지로 변환
+            const imgData = canvas.toDataURL('image/png');
+
+            // 이미지 크기 계산 (비율 유지)
+            const imgWidth = pdfWidth - 20; // 좌우 여백 10mm씩
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+            // 여러 페이지로 나누기
+            let heightLeft = imgHeight;
+            let position = 10; // 상단 여백
+
+            // 첫 페이지
+            pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+            heightLeft -= (pdfHeight - 20); // 페이지 높이에서 여백 제외
+
+            // 추가 페이지 생성
+            while (heightLeft > 0) {
+                position = heightLeft - imgHeight + 10;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+                heightLeft -= (pdfHeight - 20);
+            }
+
+            // PDF 다운로드
+            const filename = 'discussion-flow-' + currentDiscussionId + '.pdf';
+            pdf.save(filename);
+
+            console.log('✅ 흐름 시각화 PDF 다운로드 완료:', filename);
+
+        } catch (error) {
+            console.error('PDF 다운로드 오류:', error);
+            alert('PDF 다운로드 중 오류가 발생했습니다: ' + error.message);
+        }
+    });
+}
+
 // ========================================== 흐름 시각화 탭 ==========================================
 
 // Chart.js 인스턴스 저장
