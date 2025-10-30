@@ -45,6 +45,13 @@ function openSidebar(panelName, title) {
     const sidebarTitle = document.getElementById('sidebarTitle');
     const panels = document.querySelectorAll('.sidebar-panel');
     const buttons = document.querySelectorAll('.action-btn');
+    const activeBtn = document.getElementById(`btn-${panelName}`);
+
+    // 같은 메뉴를 다시 누르면 사이드바 닫기 (토글)
+    if (activeBtn && activeBtn.classList.contains('active') && sidebar.classList.contains('active')) {
+        closeSidebar();
+        return;
+    }
 
     // 제목 변경
     sidebarTitle.textContent = title;
@@ -65,7 +72,6 @@ function openSidebar(panelName, title) {
         btn.classList.remove('active');
     });
 
-    const activeBtn = document.getElementById(`btn-${panelName}`);
     if (activeBtn) {
         activeBtn.classList.add('active');
     }
