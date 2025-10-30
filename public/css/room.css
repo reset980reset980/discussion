@@ -307,7 +307,7 @@ body {
 
 /* ========================================== 사이드바 (오른쪽, 토글) ========================================== */
 .sidebar {
-    width: 350px;
+    width: 600px;
     background: white;
     border-left: 1px solid #e5e7eb;
     display: flex;
