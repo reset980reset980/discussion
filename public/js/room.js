@@ -1190,6 +1190,7 @@ if (downloadPdfBtn2) {
 
 // Chart.js 인스턴스 저장
 let participantChartInstance = null;
+let teamChartInstance = null;
 let interactionChartInstance = null;
 let trendChartInstance = null;
 let flowAnalysisResult = null;
@@ -1259,6 +1260,7 @@ if (reanalyzeFlowBtn) {
 
         // 차트 파괴
         if (participantChartInstance) participantChartInstance.destroy();
+        if (teamChartInstance) teamChartInstance.destroy();
         if (interactionChartInstance) interactionChartInstance.destroy();
         if (trendChartInstance) trendChartInstance.destroy();
     });
@@ -1286,6 +1288,8 @@ function renderFlowAnalysisResult(result) {
     // 2. 참여자별 발언 비중 차트
     if (result.participant_stats) {
         renderParticipantChartFromAI(result.participant_stats);
+        // 2-1. 팀별 발언 비중 차트 (상대적 비중)
+        renderTeamChartFromAI(result.participant_stats);
     }
 
     // 3. 참여자 상호작용 차트
@@ -1358,6 +1362,97 @@ function renderParticipantChartFromAI(participantStats) {
     });
 }
 
+// 1-1. 팀별 발언 비중 도넛 차트 (상대적 비중 계산)
+function renderTeamChartFromAI(participantStats) {
+    const canvas = document.getElementById('teamChart');
+    if (!canvas) return;
+
+    // 팀별 발언 횟수와 인원 수 계산
+    const teamData = {
+        '찬성': { count: 0, members: 0 },
+        '반대': { count: 0, members: 0 },
+        '중립': { count: 0, members: 0 }
+    };
+
+    participantStats.forEach(p => {
+        const role = p.role || '중립';
+        if (teamData[role]) {
+            teamData[role].count += p.count;
+            teamData[role].members += 1;
+        }
+    });
+
+    // 팀당 평균 발언 수 계산 (상대적 비중)
+    const teamAverages = {};
+    Object.keys(teamData).forEach(team => {
+        if (teamData[team].members > 0) {
+            teamAverages[team] = teamData[team].count / teamData[team].members;
+        } else {
+            teamAverages[team] = 0;
+        }
+    });
+
+    // 차트 데이터 준비
+    const labels = Object.keys(teamAverages).filter(team => teamAverages[team] > 0);
+    const data = labels.map(team => teamAverages[team]);
+    const colors = labels.map(team => {
+        if (team === '찬성') return 'rgba(16, 185, 129, 0.8)';
+        if (team === '반대') return 'rgba(239, 68, 68, 0.8)';
+        return 'rgba(107, 114, 128, 0.8)';
+    });
+
+    // 기존 차트 파괴
+    if (teamChartInstance) {
+        teamChartInstance.destroy();
+    }
+
+    // 차트 생성
+    teamChartInstance = new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors,
+                borderColor: 'white',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 15,
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const team = context.label || '';
+                            const avgValue = context.parsed || 0;
+                            const teamInfo = teamData[team];
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((avgValue / total) * 100).toFixed(1);
+                            return [
+                                `${team}`,
+                                `인원: ${teamInfo.members}명`,
+                                `총 발언: ${teamInfo.count}회`,
+                                `평균: ${avgValue.toFixed(1)}회/인 (${percentage}%)`
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
 // 2. AI 기반 상호작용 레이더 차트
 function renderInteractionChartFromAI(interactionStats) {
     const canvas = document.getElementById('interactionChart');
@@ -1403,6 +1498,14 @@ function renderInteractionChartFromAI(interactionStats) {
                     beginAtZero: true,
                     ticks: {
                         stepSize: 5
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.3)',  // 배경 라인 진하게
+                        lineWidth: 1.5
+                    },
+                    angleLines: {
+                        color: 'rgba(0, 0, 0, 0.3)',  // 각도 라인도 진하게
+                        lineWidth: 1.5
                     }
                 }
             },
