@@ -1374,23 +1374,31 @@ function renderParticipantChartFromAI(participantStats) {
     });
 }
 
-// 1-1. 팀별 발언 비중 도넛 차트 (상대적 비중 계산 - 찬성/반대만)
+// 1-1. 팀별 발언 비중 도넛 차트 (상대적 비중 계산 - 실제 팀명 사용)
 function renderTeamChartFromAI(participantStats) {
     const canvas = document.getElementById('teamChart');
     if (!canvas) return;
 
-    // 팀별 발언 횟수와 인원 수 계산 (찬성/반대만)
-    const teamData = {
-        '찬성': { count: 0, members: 0 },
-        '반대': { count: 0, members: 0 }
-    };
+    // 실제 팀명 가져오기
+    const team1Name = discussionInfo?.team1_name || '찬성';
+    const team2Name = discussionInfo?.team2_name || '반대';
+
+    // 팀별 발언 횟수와 인원 수 계산
+    const teamData = {};
+    teamData[team1Name] = { count: 0, members: 0 };
+    teamData[team2Name] = { count: 0, members: 0 };
 
     participantStats.forEach(p => {
         const role = p.role;
-        // 찬성 또는 반대인 경우만 집계
-        if (role === '찬성' || role === '반대') {
-            teamData[role].count += p.count;
-            teamData[role].members += 1;
+        // AI 분석 결과가 "찬성"/"반대"로 오는 경우 실제 팀명으로 매핑
+        let actualTeam = role;
+        if (role === '찬성') actualTeam = team1Name;
+        if (role === '반대') actualTeam = team2Name;
+
+        // 실제 팀명으로 집계
+        if (teamData[actualTeam]) {
+            teamData[actualTeam].count += p.count;
+            teamData[actualTeam].members += 1;
         }
     });
 
@@ -1404,13 +1412,12 @@ function renderTeamChartFromAI(participantStats) {
         }
     });
 
-    // 차트 데이터 준비 (찬성/반대만)
+    // 차트 데이터 준비
     const labels = Object.keys(teamAverages).filter(team => teamAverages[team] > 0);
     const data = labels.map(team => teamAverages[team]);
-    const colors = labels.map(team => {
-        if (team === '찬성') return 'rgba(16, 185, 129, 0.8)';
-        if (team === '반대') return 'rgba(239, 68, 68, 0.8)';
-        return 'rgba(107, 114, 128, 0.8)';
+    const colors = labels.map((team, idx) => {
+        // 팀1은 초록색, 팀2는 빨간색
+        return idx === 0 ? 'rgba(16, 185, 129, 0.8)' : 'rgba(239, 68, 68, 0.8)';
     });
 
     // 기존 차트 파괴
