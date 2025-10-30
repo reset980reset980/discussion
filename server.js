@@ -1248,17 +1248,6 @@ app.post('/api/generate-pdf', async (req, res) => {
     }
 });
 
-// 404 에러 처리 (모든 라우트 정의 이후에 위치)
-app.use((req, res) => {
-    res.status(404).json({ error: '페이지를 찾을 수 없습니다.' });
-});
-
-// 에러 핸들러
-app.use((error, req, res, next) => {
-    console.error('서버 에러:', error);
-    res.status(500).json({ error: '서버 내부 오류가 발생했습니다.' });
-});
-
 // ==========================================
 // Socket.io 실시간 통신
 // ==========================================
@@ -1692,7 +1681,7 @@ ${messagesText}
         console.log('Gemini API 요청 전송 중...');
 
         // Gemini API 호출
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
         const geminiResponse = await fetch(geminiUrl, {
             method: 'POST',
             headers: {
@@ -1847,7 +1836,7 @@ ${messagesText}
         console.log('Gemini API 요청 전송 중...');
 
         // Gemini API 호출
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
         const geminiResponse = await fetch(geminiUrl, {
             method: 'POST',
             headers: {
@@ -1910,6 +1899,21 @@ ${messagesText}
             details: error.message
         });
     }
+});
+
+// ==========================================
+// 404 및 에러 핸들러 (모든 라우트 정의 이후에 위치)
+// ==========================================
+
+// 404 에러 처리
+app.use((req, res) => {
+    res.status(404).json({ error: '페이지를 찾을 수 없습니다.' });
+});
+
+// 에러 핸들러
+app.use((error, req, res, next) => {
+    console.error('서버 에러:', error);
+    res.status(500).json({ error: '서버 내부 오류가 발생했습니다.' });
 });
 
 // 서버 시작
