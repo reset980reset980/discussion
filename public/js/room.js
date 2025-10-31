@@ -143,7 +143,7 @@ function initializeEventListeners() {
         recognition.onstart = () => {
             isRecording = true;
             voiceBtn.classList.add('recording');
-            voiceIcon.textContent = '⏹️';
+            voiceIcon.src = '/images/icons/mic-off.png';
         };
 
         recognition.onresult = (event) => {
@@ -163,7 +163,7 @@ function initializeEventListeners() {
         recognition.onend = () => {
             isRecording = false;
             voiceBtn.classList.remove('recording');
-            voiceIcon.textContent = '🎤';
+            voiceIcon.src = '/images/icons/mic-on.png';
         };
 
         voiceBtn.addEventListener('click', () => {

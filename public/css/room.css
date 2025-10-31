@@ -365,6 +365,12 @@ body {
     50% { transform: scale(1.05); }
 }
 
+.voice-icon {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+}
+
 .btn-send {
     background: #4a90e2;
     color: white;

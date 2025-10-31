@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push:*)",
+      "WebFetch(domain:www.veryicon.com)",
+      "Bash(node download-avatars.js:*)",
+      "Bash(node download-avatars-fixed.js:*)",
+      "Bash(node rename-avatars.js:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(netstat:*)",
+      "Bash(awk:*)",
+      "Bash(node:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
