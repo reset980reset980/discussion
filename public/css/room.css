@@ -47,43 +47,50 @@ body {
 }
 
 .btn-icon {
-    background: rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.95);
     border: none;
     color: white;
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     border-radius: 8px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.2s;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .btn-icon:hover {
-    background: rgba(255,255,255,0.3);
+    background: white;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
 
 .header-icon {
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     object-fit: contain;
 }
 
 .btn-close {
-    background: rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.95);
     border: none;
     color: white;
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     border-radius: 8px;
     cursor: pointer;
     font-size: 1.25rem;
-    transition: background 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .btn-close:hover {
-    background: rgba(255,0,0,0.3);
+    background: white;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
 
 /* ========================================== 토론 상황 ========================================== */
