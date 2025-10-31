@@ -386,6 +386,12 @@ body {
     background: #357abd;
 }
 
+.send-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+}
+
 /* ========================================== 사이드바 (오른쪽, 토글) ========================================== */
 .sidebar {
     flex-basis: 0;
@@ -678,6 +684,9 @@ body {
 
 .btn-icon {
     font-size: 1.25rem;
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
 }
 
 .btn-label {
