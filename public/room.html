@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>토론방</title>
     <link rel="stylesheet" href="css/room.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -455,24 +456,59 @@
         </footer>
     </div>
 
-    <!-- 공유 모달 -->
-    <div class="modal" id="shareModal">
+    <!-- 공유 모달 (index.html과 동일한 디자인) -->
+    <div id="shareModal" class="modal">
+        <div class="modal-overlay" onclick="closeShareModal()"></div>
         <div class="modal-content">
             <div class="modal-header">
-                <h3>토론방 공유</h3>
-                <button class="btn-close-modal" onclick="closeShareModal()">✕</button>
+                <h3>토론방 공유하기</h3>
+                <button class="modal-close" onclick="closeShareModal()">✕</button>
             </div>
             <div class="modal-body">
-                <div class="share-section">
-                    <label>공유 URL</label>
-                    <div class="url-input-group">
-                        <input type="text" id="shortUrl" readonly>
-                        <button onclick="copyUrl()">복사</button>
+                <p class="modal-description">아래 링크나 QR코드를 통해 다른 사람을 토론에 초대하세요.</p>
+
+                <!-- QR 코드 표시 영역 (처음부터 표시) -->
+                <div class="qr-section" id="shareQrSection">
+                    <div class="qr-code-display" id="shareQrCode">
+                        <!-- QR 코드가 여기에 표시됨 -->
                     </div>
                 </div>
-                <div class="share-section">
-                    <label>QR 코드</label>
-                    <div id="qrCode"></div>
+
+                <!-- 사용자 지정 URL -->
+                <div class="form-group">
+                    <label>사용자 지정 URL</label>
+                    <div class="custom-url-group">
+                        <input type="text" id="shareCustomSlug" class="form-input custom-alias" placeholder="원하는 주소 (예: choco)">
+                        <select id="shareDomainSelect" class="form-select">
+                            <option value=".uzu.kr">.uzu.kr</option>
+                        </select>
+                        <button type="button" class="btn-check" onclick="checkShareAliasAvailability()">
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 단축 URL 생성 버튼 -->
+                <button class="btn-primary btn-full" onclick="generateRoomShortlink()">
+                    단축 URL 생성
+                </button>
+
+                <!-- 생성된 단축 URL 표시 -->
+                <div class="result-section" id="shareResult">
+                    <div class="form-group">
+                        <label>공유 URL</label>
+                        <div class="url-copy-group">
+                            <input type="text" id="shareShortLink" class="form-input" readonly>
+                            <button type="button" class="btn-copy" onclick="copyShareUrl()">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 공유하기 버튼 -->
+                    <button class="btn-secondary btn-full" onclick="shareRoom()">
+                        <i class="fas fa-share-alt"></i> 공유하기
+                    </button>
                 </div>
             </div>
         </div>

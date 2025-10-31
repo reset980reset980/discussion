@@ -29,6 +29,11 @@
                     </h1>
                     <p class="subtitle">다양한 주제로 실시간 토론에 참여하세요</p>
                 </div>
+                <div class="header-actions">
+                    <button class="btn-create-shortlink" onclick="openShortlinkModal()">
+                        <i class="fas fa-link"></i> 무료로 단축 링크 만들기
+                    </button>
+                </div>
             </div>
         </header>
 
@@ -331,6 +336,68 @@
                 <button type="button" class="btn-primary" onclick="verifyEntryCode()">
                     입장하기
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 단축 링크 만들기 모달 -->
+    <div id="shortlinkModal" class="modal">
+        <div class="modal-overlay" onclick="closeShortlinkModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>단축 링크 만들기</h3>
+                <button class="modal-close" onclick="closeShortlinkModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description">원하는 URL을 짧게 만들어 공유해보세요.</p>
+
+                <!-- QR 코드 표시 영역 (처음부터 표시) -->
+                <div class="qr-section" id="shortlinkQrSection">
+                    <div class="qr-code-display" id="shortlinkQrCode">
+                        <!-- QR 코드 생성 전 플레이스홀더 -->
+                    </div>
+                </div>
+
+                <!-- 원본 URL 입력 -->
+                <div class="form-group">
+                    <label>원본 URL</label>
+                    <input type="url" id="originalUrl" class="form-input" placeholder="단축할 원본 링크를 여기에 붙여넣으세요" required>
+                </div>
+
+                <!-- 사용자 지정 URL -->
+                <div class="form-group">
+                    <label>사용자 지정 URL</label>
+                    <div class="custom-url-group">
+                        <input type="text" id="customAlias" class="form-input custom-alias" placeholder="원하는 주소 (예: choco)">
+                        <select id="domainSelect" class="form-select">
+                            <option value=".uzu.kr">.uzu.kr</option>
+                        </select>
+                        <button type="button" class="btn-check" onclick="checkAliasAvailability()">
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 단축 URL 생성 버튼 -->
+                <button class="btn-primary btn-full" onclick="createShortlink()">
+                    단축 URL 생성
+                </button>
+
+                <!-- 생성된 단축 URL 표시 -->
+                <div class="result-section" id="shortlinkResult" style="display: none;">
+                    <div class="form-group">
+                        <label>공유 URL</label>
+                        <div class="url-copy-group">
+                            <input type="text" id="generatedShortUrl" class="form-input" readonly>
+                            <button type="button" class="btn-copy" onclick="copyShortUrl()">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <button class="btn-primary btn-full" onclick="shareShortlink()">
+                        <i class="fas fa-share-alt"></i> 공유하기
+                    </button>
+                </div>
             </div>
         </div>
     </div>

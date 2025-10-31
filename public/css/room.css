@@ -64,11 +64,12 @@ body {
 .btn-icon:hover {
     background: white;
     box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    transform: scale(1.1);
 }
 
 .header-icon {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
     object-fit: contain;
 }
 
@@ -91,6 +92,7 @@ body {
 .btn-close:hover {
     background: white;
     box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    transform: scale(1.1);
 }
 
 /* ========================================== 토론 상황 ========================================== */
@@ -104,7 +106,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.75rem 1.5rem;
+    padding: 0.5rem 1rem;
     cursor: pointer;
     user-select: none;
 }
@@ -131,13 +133,24 @@ body {
     border: none;
     color: #666;
     cursor: pointer;
-    padding: 0.25rem;
-    transition: transform 0.3s ease;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
     font-size: 0.875rem;
+    transition: background 0.2s ease;
+}
+
+.context-toggle:hover {
+    background: rgba(74, 144, 226, 0.1);
+    color: #4a90e2;
+}
+
+.toggle-icon {
+    display: inline-block;
+    transition: transform 0.3s ease;
 }
 
 .context-toggle.collapsed .toggle-icon {
-    transform: rotate(-90deg);
+    transform: rotate(90deg);
 }
 
 .context-content {
@@ -685,15 +698,16 @@ body {
     gap: 0.25rem;
     padding: 0.75rem;
     background: transparent;
-    border: none;
+    border: 1px solid transparent;
     border-radius: 8px;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.2s;
     position: relative;
 }
 
 .action-btn:hover {
     background: #f9fafb;
+    border-color: #4a90e2;
 }
 
 .action-btn.active {
@@ -701,7 +715,7 @@ body {
     color: #4a90e2;
 }
 
-.btn-icon {
+.action-btn .btn-icon {
     font-size: 1.25rem;
     width: 24px;
     height: 24px;

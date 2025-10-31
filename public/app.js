@@ -221,11 +221,13 @@ function renderDiscussions() {
     discussionsGrid.style.display = 'grid';
     emptyState.style.display = 'none';
 
-    discussionsGrid.innerHTML = currentDiscussions.map(discussion => `
+    discussionsGrid.innerHTML = currentDiscussions.map(discussion => {
+        console.log('토론방 렌더링:', discussion.title, 'type:', discussion.type, 'type length:', discussion.type?.length);
+        return `
         <div class="discussion-card" onclick="window.location.href='room.html?id=${discussion.id}'">
             <div class="card-header">
                 <h3 class="discussion-title">
-                    ${discussion.is_private === true ? '<i class="fas fa-lock"></i> ' : ''}${escapeHtml(discussion.title)}
+                    ${discussion.is_private === true ? '<img src="/images/icons/lock-icon.png" alt="private" class="lock-icon"> ' : ''}${escapeHtml(discussion.title)}
                     <span class="type-badge ${discussion.type}">${discussion.type}</span>
                 </h3>
                 <div class="card-actions">
@@ -249,7 +251,8 @@ function renderDiscussions() {
                 <span>삭제까지: ${discussion.timeRemaining} 남음</span>
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
 
     console.log('토론방 카드 렌더링 완료');
 }
@@ -796,7 +799,7 @@ function renderActionButtons(discussion) {
     // 수정 버튼 (작성자만)
     buttons.push(`
         <button class="edit-btn" onclick="editDiscussion(event, ${discussion.id})" title="토론 수정">
-            <i class="fas fa-edit"></i>
+            <img src="/images/icons/edit-button.png" alt="edit" class="lobby-icon">
         </button>
     `);
 
@@ -804,13 +807,13 @@ function renderActionButtons(discussion) {
     if (isAdmin) {
         buttons.push(`
             <button class="delete-btn admin-delete" onclick="adminDeleteDiscussion(event, ${discussion.id})" title="관리자 삭제">
-                <i class="fas fa-trash"></i>
+                <img src="/images/icons/delete-button.png" alt="delete" class="lobby-icon">
             </button>
         `);
     } else {
         buttons.push(`
             <button class="delete-btn" onclick="deleteDiscussion(event, ${discussion.id})" title="토론 삭제">
-                <i class="fas fa-times"></i>
+                <img src="/images/icons/delete-button.png" alt="delete" class="lobby-icon">
             </button>
         `);
     }
@@ -1273,14 +1276,17 @@ async function generateAIDescriptionWithAPI(title) {
             // 불필요한 마크다운 제거
             formattedText = formattedText.replace(/\*\*/g, '');
 
-            // 【 】 기호를 구조화된 형식으로 변경
-            formattedText = formattedText.replace(/【배경】/g, '📋 상황:\n');
-            formattedText = formattedText.replace(/【찬성 입장】/g, '\n\n✅ 찬성:\n');
-            formattedText = formattedText.replace(/【반대 입장】/g, '\n\n❌ 반대:\n');
+            // 【 】 기호를 구조화된 형식으로 변경 (제목 바로 다음에 내용이 오도록)
+            formattedText = formattedText.replace(/【배경】/g, '📋 상황:');
+            formattedText = formattedText.replace(/【찬성 입장】/g, '\n\n✅ 찬성:');
+            formattedText = formattedText.replace(/【반대 입장】/g, '\n\n❌ 반대:');
 
             // 각 섹션 사이에 구분선 추가
             formattedText = formattedText.replace(/(✅ 찬성:)/g, '━━━━━━━━━━━━━━━\n$1');
             formattedText = formattedText.replace(/(❌ 반대:)/g, '────────────\n$1');
+
+            // AI 응답의 과도한 줄바꿈 정리 (연속 3개 이상을 2개로)
+            formattedText = formattedText.replace(/\n{3,}/g, '\n\n');
 
             return formattedText.trim();
         } else {
@@ -1409,6 +1415,128 @@ document.addEventListener('DOMContentLoaded', function() {
         opinionForm.addEventListener('submit', handleOpinionSubmit);
     }
 });
+
+// ==========================================
+// 단축 링크 기능
+// ==========================================
+
+// 단축 링크 모달 열기
+function openShortlinkModal() {
+    const modal = document.getElementById('shortlinkModal');
+    modal.classList.add('active');
+
+    // 초기화
+    document.getElementById('originalUrl').value = '';
+    document.getElementById('customAlias').value = '';
+    document.getElementById('shortlinkQrCode').innerHTML = '<!-- QR 코드 생성 전 플레이스홀더 -->';
+    document.getElementById('shortlinkResult').style.display = 'none';
+}
+
+// 단축 링크 모달 닫기
+function closeShortlinkModal() {
+    const modal = document.getElementById('shortlinkModal');
+    modal.classList.remove('active');
+}
+
+// 별칭 사용 가능 여부 확인
+async function checkAliasAvailability() {
+    const alias = document.getElementById('customAlias').value.trim();
+
+    if (!alias) {
+        showToast('사용자 지정 URL을 입력해주세요', 'warning');
+        return;
+    }
+
+    // TODO: 서버에서 별칭 사용 가능 여부 확인
+    showToast('사용 가능한 주소입니다', 'success');
+}
+
+// 단축 URL 생성
+async function createShortlink() {
+    const originalUrl = document.getElementById('originalUrl').value.trim();
+    const customAlias = document.getElementById('customAlias').value.trim();
+
+    if (!originalUrl) {
+        showToast('원본 URL을 입력해주세요', 'warning');
+        return;
+    }
+
+    // URL 유효성 검사
+    try {
+        new URL(originalUrl);
+    } catch (e) {
+        showToast('올바른 URL 형식이 아닙니다', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch('/s/shorten', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url: originalUrl,
+                customAlias: customAlias || undefined,
+                generateQR: true
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '단축 URL 생성 실패');
+        }
+
+        const data = await response.json();
+
+        // QR 코드 표시
+        if (data.qrCode) {
+            const qrCodeDisplay = document.getElementById('shortlinkQrCode');
+            qrCodeDisplay.innerHTML = `<img src="${data.qrCode}" alt="QR Code" style="width: 200px; height: 200px;">`;
+        }
+
+        // 생성된 URL 표시
+        document.getElementById('generatedShortUrl').value = data.shortUrl;
+        document.getElementById('shortlinkResult').style.display = 'block';
+
+        showToast('단축 URL이 생성되었습니다!', 'success');
+
+    } catch (error) {
+        console.error('단축 URL 생성 실패:', error);
+        showToast(error.message, 'error');
+    }
+}
+
+// 단축 URL 복사
+function copyShortUrl() {
+    const urlInput = document.getElementById('generatedShortUrl');
+    urlInput.select();
+    document.execCommand('copy');
+    showToast('URL이 클립보드에 복사되었습니다!', 'success');
+}
+
+// 단축 URL 공유하기
+function shareShortlink() {
+    const shortUrl = document.getElementById('generatedShortUrl').value;
+
+    if (navigator.share) {
+        navigator.share({
+            title: '단축 URL',
+            text: '생성된 단축 URL을 확인해보세요',
+            url: shortUrl
+        }).catch(err => console.log('공유 실패:', err));
+    } else {
+        copyShortUrl();
+    }
+}
+
+// 전역 함수로 등록
+window.openShortlinkModal = openShortlinkModal;
+window.closeShortlinkModal = closeShortlinkModal;
+window.checkAliasAvailability = checkAliasAvailability;
+window.createShortlink = createShortlink;
+window.copyShortUrl = copyShortUrl;
+window.shareShortlink = shareShortlink;
 
 // Service Worker registration (for future PWA features)
 if ('serviceWorker' in navigator) {

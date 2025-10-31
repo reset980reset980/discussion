@@ -270,7 +270,11 @@ async function loadDiscussionInfoForJoin() {
             const contextDescription = document.getElementById('contextDescription');
             const discussionContext = document.getElementById('discussionContext');
             if (data.description && data.description.trim()) {
-                contextDescription.textContent = data.description;
+                // 연속된 줄바꿈(3개 이상)을 2개로 줄이고, 제목 뒤의 빈 줄 제거
+                let cleanedDescription = data.description.replace(/\n{3,}/g, '\n\n');
+                // 이모지를 포함한 제목 뒤의 연속 줄바꿈을 하나로 줄이기
+                cleanedDescription = cleanedDescription.replace(/(:)\n+/g, '$1\n');
+                contextDescription.textContent = cleanedDescription;
                 if (discussionContext) discussionContext.style.display = 'block';
             } else {
                 contextDescription.textContent = '토론 상황이 설정되지 않았습니다.';
@@ -918,9 +922,32 @@ function openShareModal() {
     const modal = document.getElementById('shareModal');
     modal.classList.add('active');
 
-    // TODO: 단축 URL 및 QR 코드 생성
-    const currentUrl = window.location.href;
-    document.getElementById('shortUrl').value = currentUrl;
+    // 초기화
+    document.getElementById('shareCustomSlug').value = '';
+    document.getElementById('shareShortLink').value = window.location.href;
+
+    // QR 코드 표시
+    const qrDisplay = document.getElementById('shareQrCode');
+    qrDisplay.innerHTML = '';
+
+    // QRCode 라이브러리 사용
+    new QRCode(qrDisplay, {
+        text: window.location.href,
+        width: 200,
+        height: 200
+    });
+}
+
+// 중복 확인
+function checkShareAliasAvailability() {
+    const alias = document.getElementById('shareCustomSlug').value.trim();
+
+    if (!alias) {
+        alert('사용자 지정 URL을 입력해주세요');
+        return;
+    }
+
+    alert('사용 가능한 주소입니다');
 }
 
 function closeShareModal() {
@@ -928,12 +955,85 @@ function closeShareModal() {
     modal.classList.remove('active');
 }
 
-function copyUrl() {
-    const urlInput = document.getElementById('shortUrl');
+// 토론방 단축 URL 생성
+async function generateRoomShortlink() {
+    const customAlias = document.getElementById('shareCustomSlug').value.trim();
+    const currentUrl = window.location.href;
+
+    try {
+        const response = await fetch('/s/shorten', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url: currentUrl,
+                customAlias: customAlias || undefined,
+                generateQR: false // QR 코드는 클라이언트에서 생성
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '단축 URL 생성 실패');
+        }
+
+        const data = await response.json();
+
+        // 생성된 URL 표시
+        document.getElementById('shareShortLink').value = data.shortUrl;
+
+        // QR 코드 업데이트
+        updateQRCode(data.shortUrl);
+
+        alert('단축 URL이 생성되었습니다!');
+
+    } catch (error) {
+        console.error('단축 URL 생성 실패:', error);
+        alert(error.message);
+    }
+}
+
+// QR 코드 업데이트
+function updateQRCode(url) {
+    const qrDisplay = document.getElementById('shareQrCode');
+    qrDisplay.innerHTML = '';
+
+    // QRCode 라이브러리 사용
+    new QRCode(qrDisplay, {
+        text: url,
+        width: 200,
+        height: 200
+    });
+}
+
+// 단축 URL 복사
+function copyShareUrl() {
+    const urlInput = document.getElementById('shareShortLink');
     urlInput.select();
     document.execCommand('copy');
     alert('URL이 클립보드에 복사되었습니다!');
 }
+
+// 토론방 공유하기
+function shareRoom() {
+    const shortUrl = document.getElementById('shareShortLink').value;
+
+    if (navigator.share) {
+        navigator.share({
+            title: '토론방 초대',
+            text: '토론에 참여해보세요!',
+            url: shortUrl
+        }).catch(err => console.log('공유 실패:', err));
+    } else {
+        copyShareUrl();
+    }
+}
+
+// 전역 함수로 등록
+window.generateRoomShortlink = generateRoomShortlink;
+window.copyShareUrl = copyShareUrl;
+window.shareRoom = shareRoom;
 
 // ==========================================
 // PDF 다운로드

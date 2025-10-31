@@ -5,6 +5,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { initializeDatabase, query } = require('./db');
 const PDFDocument = require('pdfkit');
+const { createShortener } = require('./services/url-shortener');
 require('dotenv').config();
 
 const app = express();
@@ -3000,12 +3001,45 @@ async function startServer() {
     try {
         await initializeDatabase();
 
+        // URL 단축 서비스 초기화
+        const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
+        const shortener = await createShortener({
+            baseUrl: baseUrl,
+            storage: {
+                host: process.env.DB_HOST || 'localhost',
+                port: parseInt(process.env.DB_PORT || '5432'),
+                user: process.env.DB_USER || 'postgres',
+                password: process.env.DB_PASSWORD,
+                database: process.env.DB_NAME || 'vibedb'
+            },
+            codeGenerator: {
+                length: 6,
+                charset: 'safe',
+                strategy: 'random'
+            },
+            enableQR: true,
+            enableAnalytics: true,
+            autoCleanup: true,
+            cleanupInterval: 3600000 // 1시간마다 만료된 URL 정리
+        });
+
+        // URL 단축 라우트 등록 (/s/shorten, /s/:code 등)
+        app.use('/s', shortener.routes({
+            enableCreate: true,     // POST /s/shorten
+            enableRedirect: true,   // GET /s/:code
+            enableStats: false,     // GET /s/:code/stats (비활성화)
+            enableDelete: false,    // DELETE /s/:code (비활성화)
+            enableUpdate: false,    // PATCH /s/:code (비활성화)
+            enableList: false       // GET /s/list (비활성화)
+        }));
+
         server.listen(PORT, '0.0.0.0', () => {
             console.log(`\n🚀 Agora Insights 스타일 토론 게시판 서버 실행 (Socket.io 통합)`);
             console.log(`📍 URL: http://localhost:${PORT}`);
             console.log(`🕒 시작 시간: ${new Date().toLocaleString('ko-KR')}`);
             console.log(`📊 데이터베이스: ${global.discussionsStore ? 'SQLite (메모리)' : 'PostgreSQL'}`);
             console.log(`💬 실시간 채팅: 활성화`);
+            console.log(`🔗 URL 단축: 활성화 (${baseUrl}/s/:code)`);
         });
     } catch (error) {
         console.error('서버 시작 실패:', error);
