@@ -216,18 +216,21 @@ body {
 }
 
 .message-avatar {
-    width: 28px;
-    height: 28px;
+    width: 48px;
+    height: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    background: transparent;
 }
 
 .message-avatar img {
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: cover;
 }
 
 .message-content {
@@ -489,18 +492,21 @@ body {
 }
 
 .participant-avatar {
-    width: 28px;
-    height: 28px;
+    width: 40px;
+    height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    background: transparent;
 }
 
 .participant-avatar img {
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: cover;
 }
 
 .participant-info {
@@ -907,7 +913,7 @@ body {
 }
 
 .message.message-ai .message-avatar {
-    background: linear-gradient(135deg, #A78BFA 0%, #C084FC 100%);
+    background: transparent;
     border-radius: 50%;
 }
 

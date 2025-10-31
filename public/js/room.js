@@ -649,7 +649,7 @@ function addMessageToUI(data) {
 
         messageEl.className = messageClass;
         messageEl.innerHTML = `
-            <div class="message-avatar" style="background-color: ${avatarColor};">
+            <div class="message-avatar">
                 <img src="${avatarImageUrl}" alt="avatar">
             </div>
             <div class="message-content">
@@ -710,11 +710,10 @@ function updateParticipantsList(participants) {
     // 참여자 목록 HTML 생성 (아바타 이미지 + 이름 [역할] 형식)
     participantsList.innerHTML = participants.map(p => {
         const avatarImageUrl = p.avatar_image_url || '/images/avatars/avatar1.png';
-        const avatarColor = p.avatar_color || '#9333ea';
         const roleClass = getRoleClass(p.user_role);
         return `
             <div class="participant-item">
-                <div class="participant-avatar" style="background-color: ${avatarColor};">
+                <div class="participant-avatar">
                     <img src="${avatarImageUrl}" alt="avatar">
                 </div>
                 <div class="participant-info">
