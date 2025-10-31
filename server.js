@@ -1476,7 +1476,7 @@ app.post('/api/generate-pdf', async (req, res) => {
 // Socket.io 실시간 통신
 // ==========================================
 
-// 아바타 이미지 URL 목록 (로컬 이미지)
+// 아바타 이미지 URL 목록 (로컬 이미지 - VeryIcon Default Avatar 50개)
 const avatarImages = [
     '/images/avatars/avatar1.png',
     '/images/avatars/avatar2.png',
@@ -1506,6 +1506,28 @@ const avatarImages = [
     '/images/avatars/avatar26.png',
     '/images/avatars/avatar27.png',
     '/images/avatars/avatar28.png',
+    '/images/avatars/avatar29.png',
+    '/images/avatars/avatar30.png',
+    '/images/avatars/avatar31.png',
+    '/images/avatars/avatar32.png',
+    '/images/avatars/avatar33.png',
+    '/images/avatars/avatar34.png',
+    '/images/avatars/avatar35.png',
+    '/images/avatars/avatar36.png',
+    '/images/avatars/avatar37.png',
+    '/images/avatars/avatar38.png',
+    '/images/avatars/avatar39.png',
+    '/images/avatars/avatar40.png',
+    '/images/avatars/avatar41.png',
+    '/images/avatars/avatar42.png',
+    '/images/avatars/avatar43.png',
+    '/images/avatars/avatar44.png',
+    '/images/avatars/avatar45.png',
+    '/images/avatars/avatar46.png',
+    '/images/avatars/avatar47.png',
+    '/images/avatars/avatar48.png',
+    '/images/avatars/avatar49.png',
+    '/images/avatars/avatar50.png',
 ];
 
 // 아바타 배경색 목록 (원형 배경에 사용)
