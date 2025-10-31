@@ -64,6 +64,12 @@ body {
     background: rgba(255,255,255,0.3);
 }
 
+.header-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+}
+
 .btn-close {
     background: rgba(255,255,255,0.2);
     border: none;
