@@ -452,6 +452,12 @@ body {
     background: #e5e7eb;
 }
 
+.sidebar-close-icon {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+}
+
 .sidebar-content {
     flex: 1;
     overflow-y: auto;
