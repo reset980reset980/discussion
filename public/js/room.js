@@ -926,6 +926,17 @@ function openShareModal() {
     document.getElementById('shareCustomSlug').value = '';
     document.getElementById('shareShortLink').value = window.location.href;
 
+    // 입장 코드 섹션 표시 (비공개 토론방인 경우)
+    const entryCodeSection = document.getElementById('shareEntryCodeSection');
+    const entryCodeInput = document.getElementById('shareEntryCode');
+
+    if (discussionInfo && discussionInfo.is_private && discussionInfo.entry_code) {
+        entryCodeInput.value = discussionInfo.entry_code;
+        entryCodeSection.style.display = 'block';
+    } else {
+        entryCodeSection.style.display = 'none';
+    }
+
     // QR 코드 표시
     const qrDisplay = document.getElementById('shareQrCode');
     qrDisplay.innerHTML = '';
@@ -1030,10 +1041,19 @@ function shareRoom() {
     }
 }
 
+// 입장 코드 복사
+function copyEntryCode() {
+    const entryCodeInput = document.getElementById('shareEntryCode');
+    entryCodeInput.select();
+    document.execCommand('copy');
+    alert('입장 코드가 클립보드에 복사되었습니다!');
+}
+
 // 전역 함수로 등록
 window.generateRoomShortlink = generateRoomShortlink;
 window.copyShareUrl = copyShareUrl;
 window.shareRoom = shareRoom;
+window.copyEntryCode = copyEntryCode;
 
 // ==========================================
 // PDF 다운로드

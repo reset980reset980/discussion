@@ -499,7 +499,18 @@
                         <label>공유 URL</label>
                         <div class="url-copy-group">
                             <input type="text" id="shareShortLink" class="form-input" readonly>
-                            <button type="button" class="btn-copy" onclick="copyShareUrl()">
+                            <button type="button" class="btn-copy btn-copy-primary" onclick="copyShareUrl()">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 입장 코드 섹션 (비공개 토론방인 경우만 표시) -->
+                    <div class="form-group" id="shareEntryCodeSection" style="display: none;">
+                        <label>입장 코드</label>
+                        <div class="url-copy-group">
+                            <input type="text" id="shareEntryCode" class="form-input" readonly>
+                            <button type="button" class="btn-copy btn-copy-primary" onclick="copyEntryCode()">
                                 <i class="fas fa-copy"></i>
                             </button>
                         </div>
