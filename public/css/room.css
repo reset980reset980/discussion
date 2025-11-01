@@ -1936,6 +1936,12 @@ body {
     transform: translateY(0);
 }
 
+/* QR 코드 섹션 여백 */
+.qr-section {
+    text-align: center;
+    margin-bottom: 28px;
+}
+
 /* QR 코드 컨테이너 가운데 정렬 */
 .modal-content #shareQrCode {
     border: 1px solid #e5e7eb;
@@ -2038,6 +2044,6 @@ body {
 
 /* 공유하기 버튼 상단 여백 */
 #shareModal .btn-secondary {
-    margin-top: 24px;
+    margin-top: 28px;
 }
 

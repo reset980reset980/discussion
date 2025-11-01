@@ -10,7 +10,14 @@
       "Bash(git commit:*)",
       "Bash(netstat:*)",
       "Bash(awk:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(PGPASSWORD=1234 psql:*)",
+      "mcp__playwright__playwright_navigate",
+      "mcp__playwright__playwright_screenshot",
+      "mcp__playwright__playwright_click",
+      "mcp__playwright__playwright_fill",
+      "mcp__playwright__playwright_evaluate",
+      "mcp__playwright__playwright_close"
     ],
     "deny": [],
     "ask": []
