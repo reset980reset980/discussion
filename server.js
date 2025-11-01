@@ -2988,19 +2988,8 @@ app.post('/api/discussions/:id/generate-flow-pdf', async (req, res) => {
 });
 
 // ==========================================
-// 404 및 에러 핸들러 (모든 라우트 정의 이후에 위치)
+// 404 및 에러 핸들러는 startServer() 함수 안에서 모든 라우트 이후에 등록됩니다
 // ==========================================
-
-// 404 에러 처리
-app.use((req, res) => {
-    res.status(404).json({ error: '페이지를 찾을 수 없습니다.' });
-});
-
-// 에러 핸들러
-app.use((error, req, res, next) => {
-    console.error('서버 에러:', error);
-    res.status(500).json({ error: '서버 내부 오류가 발생했습니다.' });
-});
 
 // 서버 시작
 async function startServer() {
@@ -3038,6 +3027,17 @@ async function startServer() {
             enableUpdate: false,    // PATCH /s/:code (비활성화)
             enableList: false       // GET /s/list (비활성화)
         }));
+
+        // 404 에러 처리 (모든 라우트 정의 이후에 위치)
+        app.use((req, res) => {
+            res.status(404).json({ error: '페이지를 찾을 수 없습니다.' });
+        });
+
+        // 에러 핸들러
+        app.use((error, req, res, next) => {
+            console.error('서버 에러:', error);
+            res.status(500).json({ error: '서버 내부 오류가 발생했습니다.' });
+        });
 
         server.listen(PORT, '0.0.0.0', () => {
             console.log(`\n🚀 Agora Insights 스타일 토론 게시판 서버 실행 (Socket.io 통합)`);

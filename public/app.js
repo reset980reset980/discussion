@@ -1446,8 +1446,45 @@ function openShortlinkModal() {
     // 초기화
     document.getElementById('originalUrl').value = '';
     document.getElementById('customAlias').value = '';
-    document.getElementById('shortlinkQrCode').innerHTML = '<!-- QR 코드 생성 전 플레이스홀더 -->';
     document.getElementById('shortlinkResult').style.display = 'none';
+
+    // 샘플 QR 코드 생성
+    const qrCodeDisplay = document.getElementById('shortlinkQrCode');
+    qrCodeDisplay.innerHTML = '';
+    new QRCode(qrCodeDisplay, {
+        text: 'https://example.com',
+        width: 200,
+        height: 200
+    });
+
+    // 원본 URL 입력 시 실시간 QR 코드 업데이트 (이벤트 리스너 중복 방지)
+    const originalUrlInput = document.getElementById('originalUrl');
+    originalUrlInput.removeEventListener('input', updateQRCodeFromInput);
+    originalUrlInput.addEventListener('input', updateQRCodeFromInput);
+}
+
+// 입력창 변경 시 QR 코드 업데이트
+function updateQRCodeFromInput(event) {
+    const url = event.target.value.trim();
+    const qrCodeDisplay = document.getElementById('shortlinkQrCode');
+
+    if (url) {
+        // URL이 있으면 QR 코드 업데이트
+        qrCodeDisplay.innerHTML = '';
+        new QRCode(qrCodeDisplay, {
+            text: url,
+            width: 200,
+            height: 200
+        });
+    } else {
+        // URL이 비어있으면 샘플 QR 코드 표시
+        qrCodeDisplay.innerHTML = '';
+        new QRCode(qrCodeDisplay, {
+            text: 'https://example.com',
+            width: 200,
+            height: 200
+        });
+    }
 }
 
 // 단축 링크 모달 닫기
@@ -1505,13 +1542,18 @@ async function createShortlink() {
             throw new Error(error.error || '단축 URL 생성 실패');
         }
 
-        const data = await response.json();
+        const result = await response.json();
+        const data = result.data; // API 응답 구조: { success: true, data: {...} }
 
-        // QR 코드 표시
-        if (data.qrCode) {
-            const qrCodeDisplay = document.getElementById('shortlinkQrCode');
-            qrCodeDisplay.innerHTML = `<img src="${data.qrCode}" alt="QR Code" style="width: 200px; height: 200px;">`;
-        }
+        // QR 코드 표시 (QRCode 라이브러리 사용)
+        const qrCodeDisplay = document.getElementById('shortlinkQrCode');
+        qrCodeDisplay.innerHTML = ''; // 기존 QR 코드 제거
+
+        new QRCode(qrCodeDisplay, {
+            text: data.shortUrl,
+            width: 200,
+            height: 200
+        });
 
         // 생성된 URL 표시
         document.getElementById('generatedShortUrl').value = data.shortUrl;

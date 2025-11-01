@@ -1559,14 +1559,15 @@ body {
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+    background: #5b8def;
     color: white;
-    box-shadow: 0 2px 8px rgba(74, 144, 226, 0.3);
+    box-shadow: 0 2px 8px rgba(91, 141, 239, 0.3);
 }
 
 .btn-primary:hover {
+    background: #4a7ce0;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
+    box-shadow: 0 4px 12px rgba(91, 141, 239, 0.4);
 }
 
 .empty-state {
@@ -1908,17 +1909,17 @@ body {
     background-color: #e0e0e0;
 }
 
-/* 공유 모달 복사 버튼 - 원본 디자인 */
+/* 공유 모달 복사 버튼 - 별칭 확인과 동일한 디자인 */
 .btn-copy-primary {
-    background-color: #5b8def !important;
-    color: white !important;
+    background-color: white !important;
+    color: #6b7280 !important;
     width: 40px !important;
     height: 40px !important;
     min-width: 40px !important;
     min-height: 40px !important;
     padding: 0 !important;
-    border: none !important;
-    border-radius: 6px !important; /* 둥근 모서리 */
+    border: 1px solid #e5e7eb !important;
+    border-radius: 6px !important;
     cursor: pointer !important;
     transition: all 0.2s ease !important;
     display: inline-flex !important;
@@ -1928,13 +1929,15 @@ body {
 }
 
 .btn-copy-primary:hover {
-    background-color: #4a7ce0 !important;
+    background-color: #fef9c3 !important;
+    border-color: #fde68a !important;
 }
 
 .btn-copy-primary:active {
     transform: scale(0.95);
 }
 
+.btn-copy-primary i,
 .btn-copy-primary img {
     width: 16px;
     height: 16px;
@@ -1995,36 +1998,35 @@ body {
     padding: 12px;
 }
 
-/* 체크 버튼 - 원본 디자인 */
+/* 체크 버튼 - 흰색 배경 + 회색 체크 + 노란색 hover */
 .btn-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 40px;
     height: 40px;
     min-width: 40px;
     min-height: 40px;
-    border-radius: 6px;
     background-color: white;
-    color: #374151;
+    color: #6b7280;
     border: 1px solid #e5e7eb;
+    border-radius: 6px;
     cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     transition: all 0.2s ease;
     flex-shrink: 0;
 }
 
 .btn-check:hover {
-    background-color: #f9fafb;
-    color: #1f2937;
+    background-color: #fef9c3;
+    border-color: #fde68a;
 }
 
 .btn-check:active {
     transform: scale(0.95);
 }
 
-.btn-check img {
-    width: 16px;
-    height: 16px;
+.btn-check i {
+    font-size: 16px;
 }
 
 /* 단축 URL 생성 버튼 - 전체 너비, 원본: 40px */
@@ -2096,5 +2098,93 @@ body {
 
 #shareModal .btn-secondary:hover {
     background-color: #4a7ce0 !important;
+}
+
+/* ========================================== 모달 닫기 버튼 통일 (로비와 동일) ========================================== */
+.modal-close {
+    background: none !important;
+    border: none !important;
+    font-size: 20px !important;
+    color: #9ca3af !important;
+    cursor: pointer !important;
+    padding: 4px !important;
+    border-radius: 50% !important;
+    width: 32px !important;
+    height: 32px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.3s ease !important;
+}
+
+.modal-close:hover {
+    background: #f3f4f6 !important;
+    color: #374151 !important;
+}
+
+/* 공유 모달 닫기 버튼 강제 적용 */
+#shareModal .modal-close,
+#shareModal button.modal-close {
+    background: none !important;
+    border: none !important;
+    font-size: 20px !important;
+    color: #9ca3af !important;
+    cursor: pointer !important;
+    padding: 4px !important;
+    border-radius: 50% !important;
+    width: 32px !important;
+    height: 32px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.3s ease !important;
+}
+
+#shareModal .modal-close:hover,
+#shareModal button.modal-close:hover {
+    background: #f3f4f6 !important;
+    color: #374151 !important;
+}
+
+/* ========================================== Toast Notification (로비와 동일) ========================================== */
+.toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #1f2937;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 3000;
+    transition: transform 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.toast.show {
+    transform: translateX(-50%) translateY(0);
+}
+
+.toast-icon {
+    font-size: 16px;
+}
+
+.toast-message {
+    font-size: 14px;
+}
+
+.toast.success {
+    background: #059669;
+}
+
+.toast.error {
+    background: #dc2626;
+}
+
+.toast.info {
+    background: #2563eb;
 }
 

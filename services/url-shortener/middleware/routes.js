@@ -89,7 +89,7 @@ function createRoutes(service, options = {}) {
             }
 
             // storage에서 직접 확인
-            const existing = await service.storage.getByCode(alias);
+            const existing = await service.storage.findByAlias(alias);
 
             res.json({
                 available: !existing,

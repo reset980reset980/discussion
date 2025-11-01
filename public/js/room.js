@@ -955,7 +955,7 @@ async function checkShareAliasAvailability() {
     const domain = document.getElementById('shareDomainSelect').value;
 
     if (!alias) {
-        alert('사용자 지정 URL을 입력해주세요');
+        showToast('사용자 지정 URL을 입력해주세요', 'error');
         return;
     }
 
@@ -964,13 +964,13 @@ async function checkShareAliasAvailability() {
         const data = await response.json();
 
         if (data.available) {
-            alert('✅ 사용 가능한 주소입니다!');
+            showToast('사용 가능한 주소입니다!', 'success');
         } else {
-            alert('❌ 이미 사용 중인 주소입니다. 다른 주소를 입력해주세요.');
+            showToast('이미 사용 중인 주소입니다. 다른 주소를 입력해주세요.', 'error');
         }
     } catch (error) {
         console.error('중복 확인 실패:', error);
-        alert('중복 확인 중 오류가 발생했습니다. 다시 시도해주세요.');
+        showToast('중복 확인 중 오류가 발생했습니다. 다시 시도해주세요.', 'error');
     }
 }
 
@@ -1002,7 +1002,8 @@ async function generateRoomShortlink() {
             throw new Error(error.error || '단축 URL 생성 실패');
         }
 
-        const data = await response.json();
+        const result = await response.json();
+        const data = result.data; // API 응답 구조: { success: true, data: {...} }
 
         // 생성된 URL 표시
         document.getElementById('shareShortLink').value = data.shortUrl;
@@ -1010,11 +1011,11 @@ async function generateRoomShortlink() {
         // QR 코드 업데이트
         updateQRCode(data.shortUrl);
 
-        alert('단축 URL이 생성되었습니다!');
+        showToast('단축 URL이 생성되었습니다!', 'success');
 
     } catch (error) {
         console.error('단축 URL 생성 실패:', error);
-        alert(error.message);
+        showToast(error.message, 'error');
     }
 }
 
@@ -1036,7 +1037,7 @@ function copyShareUrl() {
     const urlInput = document.getElementById('shareShortLink');
     urlInput.select();
     document.execCommand('copy');
-    alert('URL이 클립보드에 복사되었습니다!');
+    showToast('URL이 클립보드에 복사되었습니다!', 'success');
 }
 
 // 토론방 공유하기
@@ -1059,7 +1060,7 @@ function copyEntryCode() {
     const entryCodeInput = document.getElementById('shareEntryCode');
     entryCodeInput.select();
     document.execCommand('copy');
-    alert('입장 코드가 클립보드에 복사되었습니다!');
+    showToast('입장 코드가 클립보드에 복사되었습니다!', 'success');
 }
 
 // 전역 함수로 등록
@@ -2458,4 +2459,51 @@ if (downloadVerdictPdfBtn) {
             alert('판결문 PDF 다운로드 중 오류가 발생했습니다: ' + error.message);
         }
     });
+}
+
+// Toast notification 함수
+function showToast(message, type = 'info') {
+    // Toast 컨테이너가 없으면 생성
+    let toast = document.getElementById('toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'toast';
+        toast.className = 'toast';
+        toast.innerHTML = `
+            <i class="toast-icon"></i>
+            <span class="toast-message"></span>
+        `;
+        document.body.appendChild(toast);
+    }
+
+    const toastIcon = toast.querySelector('.toast-icon');
+    const toastMessage = toast.querySelector('.toast-message');
+
+    // Reset classes
+    toast.className = 'toast';
+
+    // Set icon based on type
+    switch (type) {
+        case 'success':
+            toastIcon.className = 'toast-icon fas fa-check-circle';
+            toast.classList.add('success');
+            break;
+        case 'error':
+            toastIcon.className = 'toast-icon fas fa-exclamation-circle';
+            toast.classList.add('error');
+            break;
+        case 'info':
+        default:
+            toastIcon.className = 'toast-icon fas fa-info-circle';
+            toast.classList.add('info');
+            break;
+    }
+
+    toastMessage.textContent = message;
+    toast.classList.add('show');
+
+    // Auto hide after 3 seconds
+    setTimeout(() => {
+        toast.classList.remove('show');
+    }, 3000);
 }

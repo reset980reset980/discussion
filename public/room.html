@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>토론방</title>
     <link rel="stylesheet" href="css/room.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
@@ -462,7 +463,9 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3>토론방 공유하기</h3>
-                <button class="modal-close" onclick="closeShareModal()">✕</button>
+                <button class="modal-close" onclick="closeShareModal()">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>
             <div class="modal-body">
                 <p class="modal-description">아래 링크나 QR코드를 통해 다른 사람을 토론에 초대하세요.</p>
@@ -480,10 +483,10 @@
                     <div class="custom-url-group">
                         <input type="text" id="shareCustomSlug" class="form-input custom-alias" placeholder="원하는 주소 (예: choco)">
                         <select id="shareDomainSelect" class="form-select">
-                            <option value=".uzu.kr">.uzu.kr</option>
+                            <option value=".keesdconsulting.uk">.keesdconsulting.uk</option>
                         </select>
                         <button type="button" class="btn-check" onclick="checkShareAliasAvailability()">
-                            <img src="/images/icons/check.svg" alt="check">
+                            <i class="fas fa-check"></i>
                         </button>
                     </div>
                 </div>
@@ -500,7 +503,7 @@
                         <div class="url-copy-group">
                             <input type="text" id="shareShortLink" class="form-input" readonly>
                             <button type="button" class="btn-copy btn-copy-primary" onclick="copyShareUrl()">
-                                <img src="/images/icons/copy.svg" alt="copy">
+                                <img src="/images/icons/copy-outline.svg" alt="copy" style="width: 16px; height: 16px;">
                             </button>
                         </div>
                     </div>
@@ -511,7 +514,7 @@
                         <div class="url-copy-group">
                             <input type="text" id="shareEntryCode" class="form-input" readonly>
                             <button type="button" class="btn-copy btn-copy-primary" onclick="copyEntryCode()">
-                                <img src="/images/icons/copy.svg" alt="copy">
+                                <img src="/images/icons/copy-outline.svg" alt="copy" style="width: 16px; height: 16px;">
                             </button>
                         </div>
                     </div>

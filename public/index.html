@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
     <!-- 로딩 오버레이 -->
@@ -31,7 +32,8 @@
                 </div>
                 <div class="header-actions">
                     <button class="btn-create-shortlink" onclick="openShortlinkModal()">
-                        <i class="fas fa-link"></i> 무료로 단축 링크 만들기
+                        <img src="/images/icons/link2.svg" alt="link" class="btn-icon">
+                        무료로 단축 링크 만들기
                     </button>
                 </div>
             </div>
@@ -370,7 +372,7 @@
                     <div class="custom-url-group">
                         <input type="text" id="customAlias" class="form-input custom-alias" placeholder="원하는 주소 (예: choco)">
                         <select id="domainSelect" class="form-select">
-                            <option value=".uzu.kr">.uzu.kr</option>
+                            <option value=".keesdconsulting.uk">.keesdconsulting.uk</option>
                         </select>
                         <button type="button" class="btn-check" onclick="checkAliasAvailability()">
                             <i class="fas fa-check"></i>
@@ -390,7 +392,7 @@
                         <div class="url-copy-group">
                             <input type="text" id="generatedShortUrl" class="form-input" readonly>
                             <button type="button" class="btn-copy" onclick="copyShortUrl()">
-                                <i class="fas fa-copy"></i>
+                                <img src="/images/icons/copy-outline.svg" alt="copy" style="width: 16px; height: 16px;">
                             </button>
                         </div>
                     </div>

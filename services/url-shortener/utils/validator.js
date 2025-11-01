@@ -36,10 +36,11 @@ class Validator {
         try {
             const parsedUrl = new URL(url);
 
-            // 로컬호스트 차단 (옵션)
-            if (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1') {
-                return { valid: false, error: '로컬호스트 URL은 단축할 수 없습니다.' };
-            }
+            // 로컬호스트 차단 (옵션) - 개발 중에는 주석 처리
+            // 프로덕션 배포 시 아래 주석을 해제하세요
+            // if (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1') {
+            //     return { valid: false, error: '로컬호스트 URL은 단축할 수 없습니다.' };
+            // }
 
             // 허용된 프로토콜만 통과
             if (!['http:', 'https:'].includes(parsedUrl.protocol)) {

@@ -442,24 +442,48 @@ body {
 }
 
 .modal-close {
-    background: none;
-    border: none;
-    font-size: 20px;
-    color: #9ca3af;
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 50%;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s ease;
+    background: none !important;
+    border: none !important;
+    font-size: 20px !important;
+    color: #9ca3af !important;
+    cursor: pointer !important;
+    padding: 4px !important;
+    border-radius: 50% !important;
+    width: 32px !important;
+    height: 32px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.3s ease !important;
 }
 
 .modal-close:hover {
-    background: #f3f4f6;
-    color: #374151;
+    background: #f3f4f6 !important;
+    color: #374151 !important;
+}
+
+/* 토론방 공유 모달 닫기 버튼 강제 적용 */
+#shareModal .modal-close,
+#shareModal button.modal-close {
+    background: none !important;
+    border: none !important;
+    font-size: 20px !important;
+    color: #9ca3af !important;
+    cursor: pointer !important;
+    padding: 4px !important;
+    border-radius: 50% !important;
+    width: 32px !important;
+    height: 32px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.3s ease !important;
+}
+
+#shareModal .modal-close:hover,
+#shareModal button.modal-close:hover {
+    background: #f3f4f6 !important;
+    color: #374151 !important;
 }
 
 .modal-body {
@@ -490,7 +514,8 @@ body {
 }
 
 .form-input,
-.form-textarea {
+.form-textarea,
+.form-select {
     width: 100%;
     padding: 8px 12px;
     border: 2px solid #e5e7eb;
@@ -502,7 +527,8 @@ body {
 }
 
 .form-input:focus,
-.form-textarea:focus {
+.form-textarea:focus,
+.form-select:focus {
     border-color: #4f46e5;
     box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
 }
@@ -515,7 +541,7 @@ body {
 
 /* Button Styles */
 .btn-primary {
-    background: #4f46e5;
+    background: #5b8def;
     color: white;
     border: none;
     padding: 12px 20px;
@@ -531,9 +557,13 @@ body {
 }
 
 .btn-primary:hover {
-    background: #4338ca;
+    background: #4a7ce0;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+    box-shadow: 0 4px 12px rgba(91, 141, 239, 0.3);
+}
+
+.btn-full {
+    width: 100%;
 }
 
 .btn-secondary {
@@ -1318,15 +1348,17 @@ html {
     flex: 1;
 }
 
-/* 복사 버튼 기본 스타일 */
+/* 복사 버튼 기본 스타일 - 별칭 확인과 동일한 디자인 */
 .btn-copy {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 10px 15px;
-    border: none;
-    border-radius: 8px;
-    background-color: #f0f0f0;
-    color: #666;
+    min-width: 40px;
+    min-height: 40px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background-color: white;
+    color: #6b7280;
     cursor: pointer;
     transition: all 0.2s ease;
     display: inline-flex;
@@ -1335,18 +1367,21 @@ html {
 }
 
 .btn-copy:hover {
-    background-color: #e0e0e0;
+    background-color: #fef9c3;
+    border-color: #fde68a;
 }
 
-/* 공유 모달 복사 버튼 (파란색) */
+/* 공유 모달 복사 버튼 - 별칭 확인과 동일한 디자인 */
 .btn-copy-primary {
-    background-color: #5b8def !important;
-    color: white !important;
-    min-width: 44px !important;
-    min-height: 44px !important;
-    padding: 10px 15px !important;
-    border: none !important;
-    border-radius: 8px !important;
+    background-color: white !important;
+    color: #6b7280 !important;
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    padding: 0 !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 6px !important;
     cursor: pointer !important;
     transition: all 0.2s ease !important;
     display: inline-flex !important;
@@ -1355,11 +1390,157 @@ html {
 }
 
 .btn-copy-primary:hover {
-    background-color: #4a7ce0 !important;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(91, 141, 239, 0.3);
+    background-color: #fef9c3 !important;
+    border-color: #fde68a !important;
 }
 
 .btn-copy-primary:active {
-    transform: translateY(0);
+    transform: scale(0.95);
+}
+
+.btn-copy-primary i,
+.btn-copy-primary img {
+    width: 16px;
+    height: 16px;
+}
+
+.btn-copy i,
+.btn-copy img {
+    width: 16px;
+    height: 16px;
+}
+/* 단축 링크 만들기 버튼 */
+.btn-create-shortlink {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    white-space: nowrap;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    height: 40px;
+    padding: 8px 16px;
+    background-color: #f4f4f5;
+    color: #18181b;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.btn-create-shortlink:hover {
+    background-color: rgba(244, 244, 245, 0.8);
+}
+
+.btn-create-shortlink .btn-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 0;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* 단축 링크 모달 QR 코드 섹션 */
+.qr-section {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px 0;
+    margin-bottom: 20px;
+}
+
+.qr-code-display {
+    background: #ffffff;
+    padding: 16px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+    min-width: 200px;
+}
+
+.qr-code-display canvas,
+.qr-code-display img {
+    max-width: 200px;
+    max-height: 200px;
+}
+
+/* 사용자 지정 URL 입력 그룹 */
+.custom-url-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.custom-url-group .custom-alias {
+    flex: 1;
+}
+
+.custom-url-group .form-select {
+    width: auto;
+    min-width: 200px;
+}
+
+.btn-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background-color: white;
+    color: #6b7280;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-check:hover {
+    background-color: #fef9c3;
+    border-color: #fde68a;
+}
+
+/* 결과 섹션 */
+.result-section {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.url-copy-group {
+    display: flex;
+    gap: 8px;
+}
+
+.url-copy-group .form-input {
+    flex: 1;
+}
+
+.btn-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background-color: white;
+    color: #6b7280;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-copy:hover {
+    background-color: #fef9c3;
+    border-color: #fde68a;
 }
