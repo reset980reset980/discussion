@@ -1993,10 +1993,10 @@ body {
 
 /* 체크 버튼 - 원본 디자인 */
 .btn-check {
-    width: 40px;
-    height: 40px;
-    min-width: 40px;
-    min-height: 40px;
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    min-height: 48px;
     border-radius: 6px;
     background-color: white;
     color: #374151;
