@@ -1973,10 +1973,11 @@ body {
 .custom-alias {
     flex: 1;
     border: 2px solid #5b8def !important;
-    border-radius: 8px;
-    padding: 14px 16px;
+    border-radius: 6px;
+    padding: 8px 12px;
     font-size: 14px;
-    min-height: 48px;
+    min-height: 40px;
+    height: 40px;
 }
 
 .custom-alias:focus {
@@ -1996,10 +1997,10 @@ body {
 
 /* 체크 버튼 - 원본 디자인 */
 .btn-check {
-    width: 48px;
-    height: 48px;
-    min-width: 48px;
-    min-height: 48px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
     border-radius: 6px;
     background-color: white;
     color: #374151;
@@ -2026,13 +2027,15 @@ body {
     height: 16px;
 }
 
-/* 단축 URL 생성 버튼 - 전체 너비 */
+/* 단축 URL 생성 버튼 - 전체 너비, 원본: 40px */
 #shareModal .btn-primary {
     width: 100%;
-    border-radius: 12px;
-    padding: 14px;
-    font-size: 16px;
-    font-weight: 600;
+    border-radius: 6px;
+    padding: 8px 16px;
+    min-height: 40px;
+    height: 40px;
+    font-size: 14px;
+    font-weight: 500;
 }
 
 /* 공유 모달 form-group 여백 조정 */
@@ -2043,25 +2046,27 @@ body {
 #shareModal .form-group label {
     display: block;
     margin-bottom: 8px;
-    font-weight: 500;
+    font-weight: 600;
     color: #374151;
     font-size: 14px;
 }
 
-/* 공유 모달 입력창 높이 조정 */
+/* 공유 모달 입력창 높이 조정 - 원본: 40px */
 #shareModal .form-input {
-    padding: 14px 16px;
-    min-height: 48px;
+    padding: 8px 12px;
+    min-height: 40px;
+    height: 40px;
     font-size: 14px;
-    border-radius: 8px;
+    border-radius: 6px;
     border: 1px solid #e5e7eb;
 }
 
 #shareModal .form-select {
-    padding: 14px 16px;
-    min-height: 48px;
+    padding: 8px 12px;
+    min-height: 40px;
+    height: 40px;
     font-size: 14px;
-    border-radius: 8px;
+    border-radius: 6px;
     border: 1px solid #e5e7eb;
 }
 
@@ -2070,18 +2075,23 @@ body {
     margin-top: 24px;
 }
 
-/* 공유하기 버튼 상단 여백 */
+/* 공유하기 버튼 상단 여백 - 원본: 40px */
 #shareModal .btn-secondary {
-    margin-top: 28px;
+    margin-top: 16px;
     background-color: #5b8def !important;
     color: white !important;
     border: none !important;
-    padding: 16px !important;
-    min-height: 52px !important;
-    font-size: 16px !important;
-    font-weight: 600 !important;
-    border-radius: 12px !important;
+    padding: 8px 16px !important;
+    min-height: 40px !important;
+    height: 40px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    border-radius: 6px !important;
     width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
 }
 
 #shareModal .btn-secondary:hover {
