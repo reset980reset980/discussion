@@ -1991,16 +1991,16 @@ body {
     padding: 12px;
 }
 
-/* 체크 버튼 - 녹색 */
+/* 체크 버튼 - 원본 디자인 */
 .btn-check {
-    width: 48px;
-    height: 48px;
-    min-width: 48px;
-    min-height: 48px;
-    border-radius: 50%;
-    background-color: #10b981;
-    color: white;
-    border: none;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: 6px;
+    background-color: white;
+    color: #374151;
+    border: 1px solid #e5e7eb;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -2010,12 +2010,17 @@ body {
 }
 
 .btn-check:hover {
-    background-color: #059669;
-    transform: scale(1.05);
+    background-color: #f9fafb;
+    color: #1f2937;
 }
 
 .btn-check:active {
     transform: scale(0.95);
+}
+
+.btn-check img {
+    width: 16px;
+    height: 16px;
 }
 
 /* 단축 URL 생성 버튼 - 전체 너비 */
