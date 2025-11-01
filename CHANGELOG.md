@@ -1,5 +1,70 @@
 # 변경 이력 (Changelog)
 
+## 2025-11-01
+
+### 🎨 UI/UX 개선
+
+#### 1. 로비와 토론방 모달 디자인 통일
+- **변경사항**: 단축 링크 모달 UI를 로비와 토론방에서 완전히 통일
+- **세부내용**:
+  - 닫기 버튼: FontAwesome 아이콘 사용, 32x32px, 회색(#9ca3af)
+  - 별칭 확인 버튼: 흰색 배경, 회색 아이콘, 노란색 호버
+  - 복사 버튼: copy-outline.svg 사용, 체크 버튼과 동일한 스타일
+  - 모든 버튼 색상: #5b8def로 통일
+- **파일**:
+  - `public/room.html` (FontAwesome CDN 추가, 아이콘 변경)
+  - `public/css/room.css` (모달 스타일 통일)
+  - `public/style.css` (버튼 색상 통일)
+  - `public/index.html` (복사 버튼 아이콘 변경)
+
+#### 2. QR 코드 실시간 업데이트 기능 추가
+- **기능**: 로비 단축 링크 모달에서 QR 코드 실시간 업데이트
+- **구현**:
+  - 모달 열릴 때 샘플 QR 코드 표시 (https://example.com)
+  - 원본 URL 입력 시 즉시 QR 코드 생성
+- **파일**: `public/app.js` (lines 1442-1488)
+
+#### 3. Toast 알림 시스템 추가
+- **변경**: 브라우저 alert() 대신 하단 toast 알림 사용
+- **파일**:
+  - `public/css/room.css` (toast 스타일)
+  - `public/js/room.js` (showToast 함수 사용)
+
+### 🚀 배포 및 서버 설정
+
+#### 1. 원격 서버 환경 설정
+- **서버**: https://discussion.keesdconsulting.uk/
+- **설정 파일**: `.env` 파일 생성
+  - PostgreSQL 연결 정보 추가
+  - Gemini API 키 설정
+  - BASE_URL 설정
+- **위치**: `/home/reset980/discussion-board/`
+
+#### 2. PostgreSQL 데이터베이스 설정
+- **데이터베이스**: vibedb
+- **사용자**: vibe (비밀번호 설정 완료)
+- **권한**: vibedb에 대한 모든 권한 부여
+
+#### 3. 서버 시작 및 확인
+- **프로세스**: PID 1758702
+- **포트**: 3001
+- **상태**: 정상 실행 중
+
+### ✅ 기능 테스트
+
+#### 1. 단축 URL 생성 기능
+- **테스트 URL**: https://www.google.com → https://discussion.keesdconsulting.uk/s/4uqckm
+- **결과**: 정상 생성 및 DB 저장 확인
+
+#### 2. URL 리다이렉션 기능
+- **테스트**: 단축 URL 접속 시 원본 URL로 리다이렉트
+- **결과**: 정상 작동 확인
+
+#### 3. QR 코드 기능
+- **샘플 QR**: 모달 열 때 자동 표시
+- **실시간 업데이트**: URL 입력 시 즉시 QR 코드 변경
+- **결과**: 정상 작동 확인
+
 ## 2025-10-31
 
 ### 🐛 버그 수정
