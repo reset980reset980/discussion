@@ -937,6 +937,24 @@ function openEditModal(discussion) {
         if (consNameInput) consNameInput.value = discussion.team2_name || '반대';
     }
 
+    // 비공개 설정 채우기
+    const privateToggle = document.getElementById('isPrivateDiscussion');
+    const entryCodeInput = document.getElementById('entryCode');
+    const entryCodeSection = document.getElementById('entryCodeSection');
+
+    if (privateToggle) {
+        privateToggle.checked = discussion.is_private || false;
+        if (discussion.is_private && discussion.entry_code) {
+            entryCodeSection.style.display = 'block';
+            entryCodeInput.value = discussion.entry_code;
+            entryCodeInput.required = true;
+        } else {
+            entryCodeSection.style.display = 'none';
+            entryCodeInput.value = '';
+            entryCodeInput.required = false;
+        }
+    }
+
     // 모달 타이틀 변경
     document.querySelector('#newDiscussionModal h2').textContent = '토론 수정하기';
 

@@ -305,7 +305,7 @@ JSON 형식으로 응답해주세요:
 app.put('/api/discussions/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, type, description, team1Name, team2Name, roleList } = req.body;
+        const { title, type, description, team1Name, team2Name, roleList, isPrivate, entryCode } = req.body;
 
         if (!title) {
             return res.status(400).json({ error: '제목은 필수입니다.' });
@@ -318,6 +318,10 @@ app.put('/api/discussions/:id', async (req, res) => {
             rolesJson = JSON.stringify(rolesArray);
         }
 
+        // 비공개 설정 처리
+        const is_private = isPrivate === true || isPrivate === 'true';
+        const entry_code = is_private ? (entryCode || null) : null;
+
         if (global.discussionsStore) {
             // SQLite 폴백 모드
             const discussion = global.discussionsStore.find(d => d.id == id);
@@ -327,11 +331,13 @@ app.put('/api/discussions/:id', async (req, res) => {
             discussion.title = title;
             discussion.type = type || '자유';
             discussion.description = description || '';
+            discussion.is_private = is_private;
+            discussion.entry_code = entry_code;
         } else {
             // PostgreSQL 모드
             await query(
-                'UPDATE discussions SET title = $1, type = $2, description = $3, team1_name = $4, team2_name = $5, roles = $6 WHERE id = $7',
-                [title, type || '자유', description || '', team1Name || null, team2Name || null, rolesJson, id]
+                'UPDATE discussions SET title = $1, type = $2, description = $3, team1_name = $4, team2_name = $5, roles = $6, is_private = $7, entry_code = $8 WHERE id = $9',
+                [title, type || '자유', description || '', team1Name || null, team2Name || null, rolesJson, is_private, entry_code, id]
             );
         }
 
