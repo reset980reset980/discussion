@@ -1908,17 +1908,17 @@ body {
     background-color: #e0e0e0;
 }
 
-/* 공유 모달 복사 버튼 (파란색) */
+/* 공유 모달 복사 버튼 - 원본 디자인 */
 .btn-copy-primary {
     background-color: #5b8def !important;
     color: white !important;
-    width: 48px !important;
-    height: 48px !important;
-    min-width: 48px !important;
-    min-height: 48px !important;
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
     padding: 0 !important;
     border: none !important;
-    border-radius: 50% !important; /* 원형 버튼 */
+    border-radius: 6px !important; /* 둥근 모서리 */
     cursor: pointer !important;
     transition: all 0.2s ease !important;
     display: inline-flex !important;
@@ -1929,12 +1929,15 @@ body {
 
 .btn-copy-primary:hover {
     background-color: #4a7ce0 !important;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(91, 141, 239, 0.3);
 }
 
 .btn-copy-primary:active {
-    transform: translateY(0);
+    transform: scale(0.95);
+}
+
+.btn-copy-primary img {
+    width: 16px;
+    height: 16px;
 }
 
 /* QR 코드 섹션 여백 */
