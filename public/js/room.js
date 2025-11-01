@@ -950,15 +950,28 @@ function openShareModal() {
 }
 
 // 중복 확인
-function checkShareAliasAvailability() {
+async function checkShareAliasAvailability() {
     const alias = document.getElementById('shareCustomSlug').value.trim();
+    const domain = document.getElementById('shareDomainSelect').value;
 
     if (!alias) {
         alert('사용자 지정 URL을 입력해주세요');
         return;
     }
 
-    alert('사용 가능한 주소입니다');
+    try {
+        const response = await fetch(`/s/check?alias=${encodeURIComponent(alias)}&domain=${encodeURIComponent(domain)}`);
+        const data = await response.json();
+
+        if (data.available) {
+            alert('✅ 사용 가능한 주소입니다!');
+        } else {
+            alert('❌ 이미 사용 중인 주소입니다. 다른 주소를 입력해주세요.');
+        }
+    } catch (error) {
+        console.error('중복 확인 실패:', error);
+        alert('중복 확인 중 오류가 발생했습니다. 다시 시도해주세요.');
+    }
 }
 
 function closeShareModal() {

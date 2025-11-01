@@ -75,6 +75,36 @@ function createRoutes(service, options = {}) {
     }
 
     /**
+     * GET /check
+     * 커스텀 별칭 사용 가능 여부 확인
+     */
+    router.get('/check', async (req, res) => {
+        try {
+            const { alias, domain } = req.query;
+
+            if (!alias) {
+                return res.status(400).json({
+                    error: 'alias 파라미터가 필요합니다.'
+                });
+            }
+
+            // storage에서 직접 확인
+            const existing = await service.storage.getByCode(alias);
+
+            res.json({
+                available: !existing,
+                alias: alias
+            });
+
+        } catch (error) {
+            console.error('별칭 확인 오류:', error);
+            res.status(500).json({
+                error: '별칭 확인 중 오류가 발생했습니다.'
+            });
+        }
+    });
+
+    /**
      * GET /:codeOrAlias
      * 단축 URL 리다이렉션
      */
