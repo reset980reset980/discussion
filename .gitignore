@@ -1,5 +1,7 @@
 node_modules/
 .env
+.env.local
+.env.*.local
 *.log
 
 # Temporary files
@@ -7,3 +9,21 @@ node_modules/
 nul
 screenshot_helper.py
 temp_screenshots/
+
+# Security
+.npmrc.local
+*.pem
+*.key
+*.cert
+secrets/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
